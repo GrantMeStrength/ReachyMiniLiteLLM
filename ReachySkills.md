@@ -98,18 +98,36 @@ mini.set_target(
 ### 4c. Motor Management
 
 ```python
-mini.enable_motors()    # take control of servos
-mini.disable_motors()   # release servos (compliant / limp mode)
-mini.wake_up()          # power on + stand ready
-mini.goto_sleep()       # safe shutdown pose
+mini.enable_motors()            # motors ON (stiff) — robot holds position
+mini.disable_motors()           # motors OFF (limp) — robot goes floppy
+mini.make_motors_compliant()    # motors ON but SOFT — can be moved by hand
+                                # (useful for teaching-by-demonstration)
+mini.wake_up()                  # power on + stand ready
+mini.goto_sleep()               # safe shutdown pose
 ```
 
 ### 4d. Query Current State
 
 ```python
-pose = mini.get_current_head_pose()
-joints = mini.get_current_joint_positions()
+pose = mini.get_current_head_pose()       # 4x4 transformation matrix
+head_joints, antenna_joints = mini.get_current_joint_positions()
+
+body_yaw = head_joints[0]         # first joint = body rotation
+stewart = head_joints[1:]         # remaining 6 = Stewart platform
+# antenna_joints = [left, right]  # in radians
 ```
+
+### 4e. Safety Limits
+
+The robot auto-clamps to these limits — commands outside them won't cause damage.
+
+| Parameter | Min | Max |
+|-----------|-----|-----|
+| Body yaw | -180° | +180° |
+| Head pitch | -40° | +40° |
+| Head roll | -40° | +40° |
+| Head yaw | -180° | +180° |
+| Body-to-head yaw difference | -65° | +65° |
 
 ## 5. Head Pose Helper — `create_head_pose()`
 
@@ -544,10 +562,100 @@ with ReachyMini() as mini:
     mini.goto_target(head=create_head_pose(z=0, degrees=True), duration=0.5)
 ```
 
-## 12. References
+## 12. REST API & WebSocket
+
+The daemon exposes a full REST API and WebSocket interface at `http://localhost:8000`.
+
+- **API docs (Swagger UI):** http://localhost:8000/docs
+- **OpenAPI schema:** http://localhost:8000/openapi.json
+
+Useful for building web UIs, connecting to AI apps, or generating client code.
+
+**WebSocket — real-time state updates:**
+```javascript
+let ws = new WebSocket("ws://127.0.0.1:8000/api/state/ws/full");
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log(data);
+};
+```
+
+## 13. Motor Reference
+
+**Motor IDs** (Dynamixel servos, all at baudrate 1000000):
+
+| ID | Motor |
+|----|-------|
+| 10 | Foot (body yaw) |
+| 11–16 | Stewart platform (head) |
+| 17 | Left antenna |
+| 18 | Right antenna |
+
+**Scan motors** (diagnostic tool):
+```bash
+python -m reachy_mini.tools.scan_motors
+```
+
+**Antenna shaking fix:** Antennas shake at exactly 0° due to gearbox backlash.
+Offset by ~10° to eliminate it (this is now the default in recent firmware,
+see [PR #952](https://github.com/pollen-robotics/reachy_mini/pull/952)).
+
+**PID tuning** (if motors are still shaky):
+Edit `hardware_config.yaml` — try reducing P to 180 on motors 10, 17, 18.
+If that doesn't help, increase D to 10 on the same motors.
+
+## 14. Troubleshooting
+
+### Motors not responding
+1. Check 7V-5A power supply is connected (USB alone can't power motors).
+2. Check all cables are fully inserted — loose power cables are the #1 cause.
+3. Motors may be in thermal protection (overheating) — power cycle.
+4. Update SDK: `pip install -U reachy-mini`
+5. If LED blinks red: "Overload Error" — see motor diagnosis guide.
+
+### Electrical shock error
+Short circuit or power supply issue. Check cables from foot PCB to head:
+- Power cable (black & red)
+- 3-wire motor cables (300mm, 200mm, 100mm, 40mm)
+
+### Microphone not working / returns silence
+Microphone FPC cable may be **upside down**:
+- White+blue cable: **blue side up**
+- Black cable: **"Main Board" text side up**
+
+If correctly oriented, the FPC cable may be damaged — see the
+[replacement guide](https://huggingface.co/docs/reachy_mini/troubleshooting/change_mic_fpc_cable).
+
+### Low audio volume
+Update to firmware v1.2.3 or later.
+
+### Antenna appears rotated 90° or 180°
+Manufacturing issue — fix with the
+[antenna repositioning guide](https://drive.google.com/file/d/1FsmNpwELuXUbdhGHDMjG_CNpYXOMtR7A/view).
+
+### Head makes squeaking noises
+Spherical joints on the Stewart platform rods need cleaning and re-greasing.
+Follow the [maintenance guide](https://huggingface.co/docs/reachy_mini/troubleshooting/spherical_joints_maintenance).
+
+### Environment reset (Desktop App)
+If bootstrap fails or Python env is broken:
+- **Reset apps environment** — recreates `apps_venv` only (try first)
+- **Full Environment Reset** — re-downloads everything (Python + all venvs)
+
+Found in: Settings ⚙️ → "Local environment (USB & Sim)" section.
+
+### Camera dark image
+See §6d above.
+
+## 15. References
 
 - **Getting started:** https://www.runreachyrun.com/getting-started
 - **Python SDK docs:** https://github.com/pollen-robotics/reachy_mini/blob/main/docs/source/SDK/python-sdk.md
 - **Seeed Studio wiki:** https://wiki.seeedstudio.com/reachymini_sdk_python-sdk/
+- **Seeed tutorials:** https://github.com/Seeed-Projects/AI_Robotics_Academy/tree/main/Seeed_ReachyMini_Tutorial/2.English
 - **PyPI:** https://pypi.org/project/reachy-mini/
-- **Troubleshooting:** https://github.com/pollen-robotics/reachy_mini/blob/main/docs/source/troubleshooting.md
+- **Troubleshooting:** https://huggingface.co/docs/reachy_mini/troubleshooting
+- **Camera fix (issue #963):** https://github.com/pollen-robotics/reachy_mini/issues/963
+- **CameraController (macOS):** https://github.com/itaybre/CameraController
+- **uvc-util (macOS CLI):** https://github.com/jtfrey/uvc-util
+- **Piper TTS voices:** https://huggingface.co/rhasspy/piper-voices
