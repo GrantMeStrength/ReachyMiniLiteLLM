@@ -23,11 +23,8 @@ OLLAMA_MODEL = "llama3.2"
 PIPER_MODEL = "piper_models/en_GB-northern_english_male-medium.onnx"
 PIPER_CONFIG = "piper_models/en_GB-northern_english_male-medium.onnx.json"
 ROBOT_SAMPLE_RATE = 16000
-SYSTEM_PROMPT = (
-    "You are Reachy Mini, a small friendly desktop robot. "
-    "Keep replies to 1-2 short sentences. "
-    "Do not include actions in asterisks or emojis — your words will be spoken aloud."
-)
+
+from robot_karl_prompt import ROBOT_KARL_PROMPT as SYSTEM_PROMPT
 
 
 def llm_generate(prompt: str, history: list[dict] | None = None) -> str:

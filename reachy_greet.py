@@ -30,10 +30,11 @@ CHECK_INTERVAL = 0.5   # seconds between camera checks
 MOTION_THRESHOLD = 5.0  # mean pixel diff to count as motion
 MOTION_FRAMES = 3       # consecutive motion frames before greeting
 
-SYSTEM_PROMPT = (
-    "You are Robot Karl, a small friendly desktop robot. "
-    "Someone just walked into the room. Greet them warmly in 1-2 short sentences. "
-    "Do not include actions in asterisks or emojis — your words will be spoken aloud."
+from robot_karl_prompt import ROBOT_KARL_PROMPT
+
+SYSTEM_PROMPT = ROBOT_KARL_PROMPT + (
+    "\nContext: Someone just walked into the room. "
+    "Greet them in your typical dry, casual style."
 )
 
 
