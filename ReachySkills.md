@@ -254,7 +254,8 @@ with ReachyMini(media_backend="default") as mini:
 
 ### 6d. Camera Brightness / Dark Image Fix
 
-The 160° wide-angle camera can produce very dark images, especially on macOS.
+The 160° wide-angle camera can produce very dark images on macOS due to a known
+GStreamer auto-exposure bug ([issue #963](https://github.com/pollen-robotics/reachy_mini/issues/963)).
 
 **Fixes (in order):**
 
@@ -263,7 +264,10 @@ The 160° wide-angle camera can produce very dark images, especially on macOS.
 2. **Reset macOS exposure:** The GStreamer backend on Mac sometimes defaults to the
    lowest exposure. **Open FaceTime or Photo Booth briefly** after starting the Reachy
    stream — this forces macOS to reset the exposure correctly.
-3. **Improve room lighting:** The 160° wide-angle sensor struggles in low light.
+3. **CameraController app (best fix):** Install [CameraController](https://github.com/itaybre/CameraController)
+   (open-source USB camera control for macOS). Switch from **basic to advanced** settings —
+   this has been reported to fix the issue. You can also manually tune exposure from there.
+4. **Improve room lighting:** The 160° wide-angle sensor struggles in low light.
    Use bright workspace lighting for best results.
 
 **Check brightness programmatically:**
