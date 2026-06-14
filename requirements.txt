@@ -1,0 +1,6 @@
+reachy-mini
+ollama
+piper-tts
+scipy
+gtts
+numpy
