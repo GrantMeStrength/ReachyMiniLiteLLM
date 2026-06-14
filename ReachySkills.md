@@ -257,18 +257,26 @@ with ReachyMini(media_backend="default") as mini:
 The 160° wide-angle camera can produce very dark images on macOS due to a known
 GStreamer auto-exposure bug ([issue #963](https://github.com/pollen-robotics/reachy_mini/issues/963)).
 
-**Fixes (in order):**
+**Best fix — CameraController app:**
 
-1. **Update firmware:** Reachy Mini Control app → ⚙️ → *Check for updates*. 
-   Restart: press OFF, wait 5 seconds, press ON.
-2. **Reset macOS exposure:** The GStreamer backend on Mac sometimes defaults to the
-   lowest exposure. **Open FaceTime or Photo Booth briefly** after starting the Reachy
-   stream — this forces macOS to reset the exposure correctly.
-3. **CameraController app (best fix):** Install [CameraController](https://github.com/itaybre/CameraController)
-   (open-source USB camera control for macOS). Switch from **basic to advanced** settings —
-   this has been reported to fix the issue. You can also manually tune exposure from there.
-4. **Improve room lighting:** The 160° wide-angle sensor struggles in low light.
-   Use bright workspace lighting for best results.
+1. Install [CameraController](https://github.com/itaybre/CameraController)
+   (open-source USB camera control for macOS).
+2. Open it, select the Reachy Mini camera.
+3. Switch to **Advanced** settings.
+4. **Toggle OFF "Powerline Frequency"** — this dramatically improves brightness.
+
+> **Note:** This setting cannot currently be controlled programmatically from Python
+> on macOS. OpenCV's AVFoundation backend doesn't support UVC controls, and there are
+> no reliable macOS UVC CLI tools available. CameraController is a manual one-time fix
+> that persists while the camera is connected.
+
+**Other fixes:**
+
+- **Reset macOS exposure:** Open **FaceTime or Photo Booth** briefly after starting
+  the Reachy stream — this forces macOS to reset the exposure.
+- **Update firmware:** Reachy Mini Control app → ⚙️ → *Check for updates*.
+  Restart: press OFF, wait 5 seconds, press ON.
+- **Improve room lighting:** The 160° wide-angle sensor struggles in low light.
 
 **Check brightness programmatically:**
 ```python
