@@ -252,8 +252,21 @@ with ReachyMini(media_backend="default") as mini:
         time.sleep(0.5)
 ```
 
-### 6d. Brightness Check
+### 6d. Camera Brightness / Dark Image Fix
 
+The 160° wide-angle camera can produce very dark images, especially on macOS.
+
+**Fixes (in order):**
+
+1. **Update firmware:** Reachy Mini Control app → ⚙️ → *Check for updates*. 
+   Restart: press OFF, wait 5 seconds, press ON.
+2. **Reset macOS exposure:** The GStreamer backend on Mac sometimes defaults to the
+   lowest exposure. **Open FaceTime or Photo Booth briefly** after starting the Reachy
+   stream — this forces macOS to reset the exposure correctly.
+3. **Improve room lighting:** The 160° wide-angle sensor struggles in low light.
+   Use bright workspace lighting for best results.
+
+**Check brightness programmatically:**
 ```python
 gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
 brightness = gray.mean()  # 0–255; below ~40 = very dark
