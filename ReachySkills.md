@@ -63,7 +63,10 @@ Interpolates smoothly to a target pose over a given duration.
 - `antennas` — `[left, right]` in radians (positive = outward)
 - `body_yaw` — body rotation in radians
 - `duration` — seconds for the move
-- `method` — interpolation: `"minjerk"` (default), `"linear"`, `"ease_in_out"`, `"cartoon"`
+- `method` — interpolation: `"minjerk"` (default, smoothest), `"linear"`, `"ease_in_out"`, `"cartoon"` (bouncy)
+
+> **Note:** The Seeed tutorial docs show uppercase `"MIN_JERK"` etc. but the SDK requires
+> **lowercase**: `"minjerk"`, `"linear"`, `"ease_in_out"`, `"cartoon"`.
 
 ```python
 from reachy_mini import ReachyMini
@@ -110,16 +113,56 @@ joints = mini.get_current_joint_positions()
 
 ## 5. Head Pose Helper — `create_head_pose()`
 
-Creates a head target for `goto_target()` or `set_target()`.
+Returns a 4×4 homogeneous transformation matrix for use with `goto_target()` or `set_target()`.
+
+```python
+create_head_pose(x=0, y=0, z=0, roll=0, pitch=0, yaw=0, mm=False, degrees=True)
+```
+
+**Axis reference (facing the robot):**
+
+| Parameter | What it does | Positive direction |
+|-----------|-------------|-------------------|
+| `x` | Forward / back | Lean forward |
+| `y` | Side to side | Move left |
+| `z` | Up / down | Move up |
+| `roll` | Tilt head | Tilt left |
+| `pitch` | Nod | Look down |
+| `yaw` | Turn | Turn left |
+
+**Units:** Set `mm=True` for millimetres (x/y/z), `degrees=True` for degrees (roll/pitch/yaw).
+Default is metres + degrees.
 
 ```python
 from reachy_mini.utils import create_head_pose
 
-# Millimetres (translational offsets)
-create_head_pose(x=0, y=0, z=10, mm=True)
+# Look slightly left and down
+create_head_pose(yaw=10, pitch=5, degrees=True)
 
-# Degrees (rotational — pitch/yaw/roll)
-create_head_pose(x=0, y=0, z=15, degrees=True)
+# Translate up 10mm
+create_head_pose(z=10, mm=True)
+
+# Combine translation + rotation
+create_head_pose(y=0.02, z=0.01, pitch=3, yaw=8, mm=False, degrees=True)
+```
+
+### 5a. `look_at_world()` and `look_at_image()`
+
+```python
+# Look at a 3D point in world space (metres)
+mini.look_at_world(x=0.5, y=0.0, z=0.3, duration=1.0, perform_movement=True)
+
+# Look at a pixel in the camera image
+mini.look_at_image(u=320, v=240, duration=0.5, perform_movement=True)
+```
+
+### 5b. Automatic Body Yaw
+
+When enabled (default), the body auto-rotates to help the head reach target positions.
+
+```python
+mini.set_automatic_body_yaw(True)    # enable (default)
+mini.set_automatic_body_yaw(False)   # disable — body stays fixed
 ```
 
 ## 6. Camera 📷

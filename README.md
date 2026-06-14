@@ -27,6 +27,7 @@ python wave_antennas.py                          # wave the antennas
 python play_tone.py                              # play a melody
 python speak.py                                  # speak via Google TTS
 python reachy_speak_llm.py "Tell me a joke!"     # LLM + local TTS
+python reachy_speak_animated.py                  # LLM + TTS + head/antenna animation
 ```
 
 ## Scripts
@@ -37,6 +38,7 @@ python reachy_speak_llm.py "Tell me a joke!"     # LLM + local TTS
 | `play_tone.py` | Play a C-E-G-C melody through the speaker | No |
 | `speak.py` | Speak a phrase using Google TTS | Yes |
 | `reachy_speak_llm.py` | Ask Ollama a question, speak the reply with Piper TTS | No |
+| `reachy_speak_animated.py` | LLM speech + animated head/antenna movements | No |
 
 ## Skills Reference
 

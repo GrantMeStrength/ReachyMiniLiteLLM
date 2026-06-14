@@ -20,8 +20,8 @@ from reachy_mini import ReachyMini
 
 # --- Config ---
 OLLAMA_MODEL = "llama3.2"
-PIPER_MODEL = "piper_models/en_US-amy-medium.onnx"
-PIPER_CONFIG = "piper_models/en_US-amy-medium.onnx.json"
+PIPER_MODEL = "piper_models/en_GB-northern_english_male-medium.onnx"
+PIPER_CONFIG = "piper_models/en_GB-northern_english_male-medium.onnx.json"
 ROBOT_SAMPLE_RATE = 16000
 SYSTEM_PROMPT = (
     "You are Reachy Mini, a small friendly desktop robot. "
@@ -41,8 +41,11 @@ def llm_generate(prompt: str, history: list[dict] | None = None) -> str:
     return resp.message.content
 
 
-def tts_synthesize(text: str, voice: PiperVoice) -> np.ndarray:
-    """Convert text to 16kHz float32 mono samples using Piper."""
+def tts_synthesize(text: str, voice: PiperVoice, pitch_shift: float = 0.95) -> np.ndarray:
+    """Convert text to 16kHz float32 mono samples using Piper.
+
+    pitch_shift: < 1.0 = deeper, > 1.0 = higher.
+    """
     chunks = list(voice.synthesize(text))
     if not chunks:
         return np.array([], dtype=np.float32)
@@ -50,10 +53,10 @@ def tts_synthesize(text: str, voice: PiperVoice) -> np.ndarray:
     samples = np.concatenate([ch.audio_float_array for ch in chunks])
     src_rate = chunks[0].sample_rate
 
-    # Resample to 16kHz if needed
-    if src_rate != ROBOT_SAMPLE_RATE:
-        num_out = int(len(samples) * ROBOT_SAMPLE_RATE / src_rate)
-        samples = resample(samples, num_out).astype(np.float32)
+    # Pitch shift by resampling at altered rate
+    effective_rate = src_rate * pitch_shift
+    num_out = int(len(samples) * ROBOT_SAMPLE_RATE / effective_rate)
+    samples = resample(samples, num_out).astype(np.float32)
 
     return samples
 
