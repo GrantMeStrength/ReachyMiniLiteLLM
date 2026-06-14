@@ -267,8 +267,8 @@ GStreamer auto-exposure bug ([issue #963](https://github.com/pollen-robotics/rea
 
 > **Note:** This setting cannot currently be controlled programmatically from Python
 > on macOS. OpenCV's AVFoundation backend doesn't support UVC controls, and there are
-> no reliable macOS UVC CLI tools available. CameraController is a manual one-time fix
-> that persists while the camera is connected.
+> no reliable macOS UVC CLI tools available. CameraController is a manual one-time fix —
+> **the setting persists in the camera firmware** even after quitting the app.
 
 **Other fixes:**
 
