@@ -28,6 +28,7 @@ python play_tone.py                              # play a melody
 python speak.py                                  # speak via Google TTS
 python reachy_speak_llm.py "Tell me a joke!"     # LLM + local TTS
 python reachy_speak_animated.py                  # LLM + TTS + head/antenna animation
+python reachy_greet.py                           # watch for visitors + auto-greet
 ```
 
 ## Scripts
@@ -39,6 +40,7 @@ python reachy_speak_animated.py                  # LLM + TTS + head/antenna anim
 | `speak.py` | Speak a phrase using Google TTS | Yes |
 | `reachy_speak_llm.py` | Ask Ollama a question, speak the reply with Piper TTS | No |
 | `reachy_speak_animated.py` | LLM speech + animated head/antenna movements | No |
+| `reachy_greet.py` | Watches camera for motion, greets visitors with LLM speech | No |
 
 ## Skills Reference
 

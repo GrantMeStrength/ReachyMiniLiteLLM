@@ -52,18 +52,18 @@ def animate_while_speaking(mini: ReachyMini, duration: float):
       - yaw: turn (positive = look left)
     """
     keyframes = [
-        # (y,    z,     pitch, yaw,  ant_l, ant_r, dur)
-        ( 0.02,  0.01,  0,     8,   0.3,  -0.1,  1.0),   # glance right + up
-        (-0.02,  0.00,  3,    -8,  -0.1,   0.3,  1.0),   # glance left + nod
-        ( 0.01,  0.02,  0,     5,   0.2,  -0.2,  0.8),   # slight right + up
-        (-0.01, -0.01, -3,    -5,  -0.2,   0.2,  0.8),   # slight left
-        ( 0.0,   0.01,  3,     0,   0.15, -0.15, 0.7),   # center nod
+        # (y,    z,     pitch, yaw,  body_yaw, ant_l, ant_r, dur)
+        ( 0.02,  0.01,  0,     8,    0.15,     0.3,  -0.1,  1.0),   # glance right + up
+        (-0.02,  0.00,  3,    -8,   -0.15,    -0.1,   0.3,  1.0),   # glance left + nod
+        ( 0.01,  0.02,  0,     5,    0.1,      0.2,  -0.2,  0.8),   # slight right + up
+        (-0.01, -0.01, -3,    -5,   -0.1,     -0.2,   0.2,  0.8),   # slight left
+        ( 0.0,   0.01,  3,     0,    0.0,      0.15, -0.15, 0.7),   # center nod
     ]
 
     start = time.time()
     i = 0
     while time.time() - start < duration:
-        y, z, pitch, yaw, al, ar, dur = keyframes[i % len(keyframes)]
+        y, z, pitch, yaw, byaw, al, ar, dur = keyframes[i % len(keyframes)]
         remaining = duration - (time.time() - start)
         dur = min(dur, remaining)
         if dur < 0.1:
@@ -71,6 +71,7 @@ def animate_while_speaking(mini: ReachyMini, duration: float):
         mini.goto_target(
             head=create_head_pose(y=y, z=z, pitch=pitch, yaw=yaw, mm=False, degrees=True),
             antennas=[al, ar],
+            body_yaw=byaw,
             duration=dur,
             method="minjerk",
         )
@@ -80,6 +81,7 @@ def animate_while_speaking(mini: ReachyMini, duration: float):
     mini.goto_target(
         head=create_head_pose(),
         antennas=[0, 0],
+        body_yaw=0.0,
         duration=0.6,
         method="minjerk",
     )

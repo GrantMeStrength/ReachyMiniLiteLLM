@@ -170,8 +170,97 @@ mini.set_automatic_body_yaw(False)   # disable — body stays fixed
 ```python
 with ReachyMini(media_backend="default") as mini:
     frame = mini.media.get_frame()
-    # frame is a numpy array: shape (height, width, 3), dtype uint8
+    # frame is a numpy array: shape (1080, 1920, 3), dtype uint8 (RGB)
 ```
+
+> **Dep:** `pip install opencv-python Pillow`
+
+### 6a. Save a Snapshot
+
+```python
+from PIL import Image
+
+with ReachyMini(media_backend="default") as mini:
+    frame = mini.media.get_frame()
+    Image.fromarray(frame).save("snapshot.jpg")
+```
+
+### 6b. Face Detection (OpenCV Haar Cascade)
+
+Works best in reasonable lighting. Mean brightness < ~40/255 = too dark for reliable detection.
+
+```python
+import cv2
+
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
+
+with ReachyMini(media_backend="default") as mini:
+    frame = mini.media.get_frame()
+    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+
+    # Strict (fewer false positives)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5, minSize=(80, 80))
+
+    # Lenient (better in low light, more false positives)
+    # faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=3, minSize=(40, 40))
+
+    for (x, y, w, h) in faces:
+        print(f"Face at ({x},{y}) size {w}x{h}")
+```
+
+### 6c. Motion Detection (Frame Differencing)
+
+More robust than face detection in low light. Compares consecutive frames to detect movement.
+
+```python
+import cv2
+import numpy as np
+import time
+
+MOTION_THRESHOLD = 5.0  # mean pixel diff to count as motion
+MOTION_FRAMES = 3       # consecutive motion frames before triggering
+
+with ReachyMini(media_backend="default") as mini:
+    prev_gray = None
+    motion_count = 0
+
+    while True:
+        frame = mini.media.get_frame()
+        small = cv2.resize(frame, (320, 180))
+        gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
+        gray = cv2.GaussianBlur(gray, (21, 21), 0)
+
+        if prev_gray is not None:
+            diff = cv2.absdiff(prev_gray, gray)
+            mean_diff = diff.mean()
+
+            if mean_diff > MOTION_THRESHOLD:
+                motion_count += 1
+            else:
+                motion_count = 0
+
+            if motion_count >= MOTION_FRAMES:
+                print(f"Motion detected! (diff={mean_diff:.1f})")
+                motion_count = 0
+                prev_gray = None  # reset baseline
+                time.sleep(2)
+                continue
+
+        prev_gray = gray
+        time.sleep(0.5)
+```
+
+### 6d. Brightness Check
+
+```python
+gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+brightness = gray.mean()  # 0–255; below ~40 = very dark
+```
+
+> **Tip:** Use motion detection instead of face detection in dark rooms.
+> See `reachy_greet.py` for a full example that detects someone entering and speaks a greeting.
 
 ## 7. Audio 🎙️🔊
 
