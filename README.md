@@ -29,6 +29,24 @@ python speak.py                                  # speak via Google TTS
 python reachy_speak_llm.py "Tell me a joke!"     # LLM + local TTS
 python reachy_speak_animated.py                  # LLM + TTS + head/antenna animation
 python reachy_greet.py                           # watch for visitors + auto-greet
+python reachy_dashboard.py                       # webhook server on port 9000
+```
+
+### Dashboard API (port 9000)
+```bash
+# Speak directly
+curl -X POST http://localhost:9000/say \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "Deploy complete"}'
+
+# Karl-styled announcement
+curl -X POST http://localhost:9000/announce \
+  -H 'Content-Type: application/json' \
+  -d '{"event": "PR #42 merged", "context": "Auth module refactor"}'
+
+# Check status / history
+curl http://localhost:9000/status
+curl http://localhost:9000/history
 ```
 
 ## Scripts
@@ -41,6 +59,7 @@ python reachy_greet.py                           # watch for visitors + auto-gre
 | `reachy_speak_llm.py` | Ask Ollama a question, speak the reply with Piper TTS | No |
 | `reachy_speak_animated.py` | LLM speech + animated head/antenna movements | No |
 | `reachy_greet.py` | Watches camera for motion, greets visitors with LLM speech | No |
+| `reachy_dashboard.py` | Webhook server — any agent can POST to make robot announce | No |
 
 ## Skills Reference
 
