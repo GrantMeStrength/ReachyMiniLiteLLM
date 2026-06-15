@@ -647,7 +647,73 @@ Found in: Settings ⚙️ → "Local environment (USB & Sim)" section.
 ### Camera dark image
 See §6d above.
 
-## 15. References
+## 15. Alternative: Official Conversation App + MCP Tools
+
+> **We use the local Ollama + Piper approach (§7d) for offline control.**
+> The official conversation app is documented here as an alternative for cloud-connected setups.
+
+The `reachy-mini-conversation-app` is Pollen's real-time voice conversation system.
+It uses **OpenAI's realtime API** (cloud, paid) and includes built-in embodied tools:
+
+| Built-in Tool | What it does |
+|---------------|-------------|
+| `move_head` | Queue a head pose change |
+| `dance` / `stop_dance` | Play/stop dances from the built-in library |
+| `play_emotion` / `stop_emotion` | Play/stop recorded emotion clips |
+| `camera` | Capture a frame and analyze it |
+| `head_tracking` | Toggle head-tracking offsets |
+| `idle_do_nothing` | Explicitly stay idle |
+
+### MCP Remote Tools (via HuggingFace Spaces)
+
+The app can also call tools hosted in public HuggingFace Spaces over MCP —
+no code is downloaded locally.
+
+```bash
+# Add a weather tool
+reachy-mini-conversation-app tool-spaces add pollen-robotics/reachy-mini-weather-tool
+
+# Add web search
+reachy-mini-conversation-app tool-spaces add pollen-robotics/reachy-mini-search-tool
+
+# List / remove
+reachy-mini-conversation-app tool-spaces list
+reachy-mini-conversation-app tool-spaces remove <owner/space-name>
+```
+
+### Profiles
+
+Profiles control which tools are active via `tools.txt` + `instructions.txt`.
+Tools not listed in `tools.txt` can't be called by the model.
+
+```
+# profiles/default/tools.txt
+dance
+stop_dance
+play_emotion
+stop_emotion
+camera
+idle_do_nothing
+head_tracking
+move_head
+pollen_robotics_reachy_mini_search_tool__search_web
+```
+
+### Our approach vs. conversation app
+
+| | Our setup (§7d) | Conversation app |
+|---|---|---|
+| LLM | Ollama (local, free) | OpenAI realtime API (cloud, paid) |
+| TTS | Piper (local, free) | OpenAI voice (cloud) |
+| Internet | Not required | Required |
+| Built-in dances/emotions | ❌ | ✅ |
+| MCP tools | ❌ (use webhook instead) | ✅ via HF Spaces |
+| Custom voice/personality | ✅ Full control | ✅ Via profiles |
+| Latency | ~2-5s | Real-time streaming |
+
+> **More info:** https://huggingface.co/blog/adding-mcp-tools-to-reachy-mini
+
+## 16. References
 
 - **Getting started:** https://www.runreachyrun.com/getting-started
 - **Python SDK docs:** https://github.com/pollen-robotics/reachy_mini/blob/main/docs/source/SDK/python-sdk.md
@@ -659,3 +725,4 @@ See §6d above.
 - **CameraController (macOS):** https://github.com/itaybre/CameraController
 - **uvc-util (macOS CLI):** https://github.com/jtfrey/uvc-util
 - **Piper TTS voices:** https://huggingface.co/rhasspy/piper-voices
+- **MCP tools blog:** https://huggingface.co/blog/adding-mcp-tools-to-reachy-mini
