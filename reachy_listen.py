@@ -69,27 +69,46 @@ def animate_loop(mini, keyframes, stop_event):
 
 
 def record_audio(mini, duration):
-    """Record from robot mic, return mono float32 @ 16kHz."""
+    """Record from robot mic, return (mono_audio, doa_yaw_deg or None)."""
     mini.media.start_recording()
     time.sleep(0.1)  # let recording pipeline settle
     chunks = []
+    doa_samples = []
     start = time.time()
     while time.time() - start < duration:
         try:
             chunk = mini.media.get_audio_sample()
             if hasattr(chunk, 'ndim') and chunk.ndim == 2:
                 chunks.append(chunk)
+            # Sample DoA periodically
+            angle, active = mini.media.get_DoA()
+            if active:
+                doa_samples.append(-math.degrees(angle - math.pi / 2))  # negate: DoA convention is opposite to head yaw
         except Exception:
             time.sleep(0.005)
     mini.media.stop_recording()
     if not chunks:
-        return np.zeros(int(ROBOT_SAMPLE_RATE * duration), dtype=np.float32)
+        return np.zeros(int(ROBOT_SAMPLE_RATE * duration), dtype=np.float32), None
     audio = np.concatenate(chunks, axis=0)
-    return audio.mean(axis=1)  # stereo → mono
+    mono = audio.mean(axis=1)  # stereo → mono
+    # Average DoA when speech was detected
+    doa_yaw = np.mean(doa_samples) if doa_samples else None
+    return mono, doa_yaw
 
 
-def speak_animated(mini, voice, text):
-    """Speak text with animated head movements."""
+def turn_toward_speaker(mini, doa_yaw_deg):
+    """Smoothly turn head and body toward the detected speaker direction."""
+    # Clamp to safe ranges
+    head_yaw = max(-60, min(60, doa_yaw_deg))
+    body_yaw_rad = math.radians(max(-40, min(40, doa_yaw_deg * 0.5)))
+    pose = create_head_pose(yaw=head_yaw, degrees=True)
+    mini.goto_target(head=pose, body_yaw=body_yaw_rad,
+                     duration=0.6, method="minjerk")
+    print(f"   🧭 Turned toward speaker ({doa_yaw_deg:+.0f}°)", flush=True)
+
+
+def speak_animated(mini, voice, text, face_yaw=0):
+    """Speak text with animated head movements, facing toward face_yaw degrees."""
     # Generate audio
     chunks = []
     for ch in voice.synthesize(text):
@@ -102,10 +121,20 @@ def speak_animated(mini, voice, text):
     resampled = resample(raw, num_samples).astype(np.float32)
     audio_duration = len(resampled) / ROBOT_SAMPLE_RATE
 
+    # Offset speaking keyframes toward the speaker
+    offset_keyframes = []
+    for (y, z, pitch, yaw, body_yaw, ant_l, ant_r, dur) in SPEAKING_KEYFRAMES:
+        offset_keyframes.append((
+            y, z, pitch,
+            yaw + face_yaw * 0.7,  # bias gestures toward speaker
+            body_yaw + math.radians(face_yaw * 0.3),
+            ant_l, ant_r, dur
+        ))
+
     # Start animation
     stop_anim = threading.Event()
     anim_thread = threading.Thread(target=animate_loop,
-                                   args=(mini, SPEAKING_KEYFRAMES, stop_anim))
+                                   args=(mini, offset_keyframes, stop_anim))
     anim_thread.start()
 
     # Play audio
@@ -134,6 +163,9 @@ def main():
         {"role": "system", "content": ROBOT_KARL_SYSTEM_PROMPT},
     ]
 
+    # Track speaker direction across turns
+    speaker_yaw = 0  # degrees, 0 = straight ahead
+
     # Quick greeting
     speak_animated(mini, voice, "Right then. I'm listening. What do you want?")
 
@@ -147,8 +179,8 @@ def main():
             )
             listen_thread.start()
 
-            print("🎤 Listening...")
-            mono = record_audio(mini, LISTEN_SECONDS)
+            print("🎤 Listening...", flush=True)
+            mono, doa_yaw = record_audio(mini, LISTEN_SECONDS)
 
             stop_listen_anim.set()
             listen_thread.join()
@@ -156,19 +188,24 @@ def main():
             # Check for silence
             rms = np.sqrt(np.mean(mono ** 2))
             if rms < SILENCE_THRESHOLD:
-                print("   (silence)")
+                print("   (silence)", flush=True)
                 continue
 
+            # Turn toward speaker if DoA detected
+            if doa_yaw is not None:
+                speaker_yaw = doa_yaw
+                turn_toward_speaker(mini, speaker_yaw)
+
             # Transcribe
-            print("🧠 Transcribing...")
+            print("🧠 Transcribing...", flush=True)
             segments, info = whisper.transcribe(mono, language="en")
             text = " ".join(seg.text for seg in segments).strip()
 
             if len(text) < MIN_TRANSCRIPT_LEN:
-                print(f"   (too short: '{text}')")
+                print(f"   (too short: '{text}')", flush=True)
                 continue
 
-            print(f"👤 You: {text}")
+            print(f"👤 You: {text}", flush=True)
 
             # LLM response
             conversation_history.append({"role": "user", "content": text})
@@ -180,10 +217,10 @@ def main():
             if len(conversation_history) > 20:
                 conversation_history = conversation_history[:1] + conversation_history[-18:]
 
-            print(f"🤖 Karl: {reply}\n")
+            print(f"🤖 Karl: {reply}\n", flush=True)
 
-            # Speak
-            speak_animated(mini, voice, reply)
+            # Speak while facing the speaker
+            speak_animated(mini, voice, reply, face_yaw=speaker_yaw)
 
     except KeyboardInterrupt:
         print("\n\nStopping...")
