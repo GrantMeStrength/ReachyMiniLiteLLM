@@ -4,3 +4,8 @@ piper-tts
 scipy
 gtts
 numpy
+opencv-python
+Pillow
+faster-whisper
+fastapi
+uvicorn

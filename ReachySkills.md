@@ -192,6 +192,11 @@ with ReachyMini(media_backend="default") as mini:
 ```
 
 > **Dep:** `pip install opencv-python Pillow`
+>
+> **Hardware:** Raspberry Pi Camera 3 Wide (Sony IMX708, 12 MP, autofocus).
+> Lite version outputs MJPG compressed frames — SDK decompresses for you.
+> On macOS, AVFoundation caps the camera at **30 fps** (vs 60 fps on Linux).
+> Camera is factory-calibrated — intrinsic parameters available for CV tasks (see `look_at` example).
 
 ### 6a. Save a Snapshot
 
@@ -310,8 +315,15 @@ brightness = gray.mean()  # 0–255; below ~40 = very dark
 > Audio uses 16 kHz sample rate, float32, stereo input / mono or stereo output.
 > `push_audio_sample()` is **non-blocking** — it returns immediately while audio plays.
 > Always `time.sleep()` for the audio duration if you need to wait for playback.
+>
+> **Hardware:** Seeed reSpeaker XVF3800 mic array (4 MEMS mics, −26 dBFS, 64 dBA SNR).
+> Built-in **Acoustic Echo Cancellation (AEC)** — always on, prevents robot hearing itself.
+> Built-in **Direction of Arrival (DoA)** — 180° range (linear mic array).
+> Paired with 5W/4Ω speaker.
 
 ### 7a. Recording & Playback (Raw Audio)
+
+**Important:** Call `start_recording()` before `get_audio_sample()`, or it will hang.
 
 ```python
 from reachy_mini import ReachyMini
@@ -322,9 +334,10 @@ with ReachyMini(media_backend="default") as mini:
     mini.media.start_recording()
     mini.media.start_playing()
 
-    # Record
+    # Record — returns a small chunk per call (~10ms = 160 samples)
+    # Loop to accumulate longer recordings
     samples = mini.media.get_audio_sample()
-    # samples: numpy (N, 2) float32 @ 16 kHz
+    # samples: numpy (160, 2) float32 @ 16 kHz stereo
 
     # Resample if input/output rates differ
     out_rate = mini.media.get_output_audio_samplerate()
@@ -335,11 +348,34 @@ with ReachyMini(media_backend="default") as mini:
     mini.media.push_audio_sample(samples)
     time.sleep(len(samples) / out_rate)
 
-    # Direction of Arrival (0 = left, π/2 = front, π = right)
+    # Direction of Arrival (angle_radians, is_speech_active)
+    # 0 = left, π/2 ≈ front, π = right
     doa, is_speech = mini.media.get_DoA()
 
     mini.media.stop_recording()
     mini.media.stop_playing()
+```
+
+### 7a-ii. Longer Recording (accumulate chunks)
+
+```python
+import numpy as np
+import time
+
+with ReachyMini(media_backend="default") as mini:
+    mini.media.start_recording()
+    chunks = []
+    duration = 3.0  # seconds
+    start = time.time()
+    while time.time() - start < duration:
+        chunk = mini.media.get_audio_sample()
+        chunks.append(chunk)
+    mini.media.stop_recording()
+
+    audio = np.concatenate(chunks, axis=0)  # (N, 2) float32
+    # Convert stereo to mono: average channels
+    mono = audio.mean(axis=1)  # (N,) float32
+    print(f"Recorded {len(mono)/16000:.1f}s of audio")
 ```
 
 ### 7b. Playing Tones & Melodies (No Internet Required)
@@ -514,6 +550,55 @@ with ReachyMini(media_backend="default") as mini:
 | Piper TTS (§7d) | Good, natural | ❌ No | ~0.5s | `pip install piper-tts` + model |
 | Piper + Ollama (§7d) | Good + smart | ❌ No | ~2-5s | Both above + `pip install ollama` |
 
+### 7f. Speech-to-Text (Local, via Whisper)
+
+> **Deps:** `pip install faster-whisper` (uses CTranslate2, runs on CPU).
+
+Listen to the robot's mic, transcribe with Whisper, then respond with LLM + TTS.
+
+```python
+from reachy_mini import ReachyMini
+from faster_whisper import WhisperModel
+import numpy as np
+import time
+
+model = WhisperModel("base.en", compute_type="int8")  # ~150MB, fast on CPU
+
+def record_audio(mini, duration=4.0):
+    """Record from robot mic, return mono float32 @ 16kHz."""
+    mini.media.start_recording()
+    chunks = []
+    start = time.time()
+    while time.time() - start < duration:
+        chunks.append(mini.media.get_audio_sample())
+    mini.media.stop_recording()
+    audio = np.concatenate(chunks, axis=0)
+    return audio.mean(axis=1)  # stereo → mono
+
+with ReachyMini(media_backend="default") as mini:
+    mono = record_audio(mini, duration=4.0)
+    segments, info = model.transcribe(mono, language="en")
+    text = " ".join(seg.text for seg in segments).strip()
+    print(f"Heard: {text}")
+```
+
+### 7g. Direction of Arrival — Turn Toward Speaker
+
+```python
+import math
+
+with ReachyMini(media_backend="default") as mini:
+    mini.media.start_recording()
+    angle, is_active = mini.media.get_DoA()
+    mini.media.stop_recording()
+
+    if is_active:
+        # Convert DoA (0=left, π/2=front, π=right) to yaw degrees
+        yaw_deg = math.degrees(angle - math.pi / 2)  # negative=left, positive=right
+        pose = create_head_pose(yaw=yaw_deg, degrees=True)
+        mini.goto_target(head=pose, duration=0.5, method="minjerk")
+```
+
 ## 8. Media Backend Options
 
 | Backend | When to use |
@@ -522,6 +607,29 @@ with ReachyMini(media_backend="default") as mini:
 | `"local"` | Force local — same machine as daemon (USB Lite) |
 | `"webrtc"` | Force remote streaming (Linux clients only for now) |
 | `"no_media"` | Release camera/audio so OpenCV or sounddevice can use them directly |
+
+### 8a. Media Architecture
+
+The daemon runs a GStreamer pipeline that splits the camera stream to:
+- **Local IPC** (`unixfdsink` on macOS/Linux) — zero-copy frames for local apps
+- **WebRTC** (`webrtcsink`) — for remote access and web apps
+
+The SDK auto-detects which path to use. Audio is bidirectional over the same connection.
+
+**GStreamer debug pipelines** (useful for troubleshooting):
+```bash
+# View local camera stream (raw frames via IPC)
+gst-launch-1.0 unixfdsrc socket-path=/tmp/reachymini_camera_socket ! videoconvert ! fakesink
+
+# View remote stream (WebRTC)
+gst-launch-1.0 webrtcsrc signaller::uri="ws://127.0.0.1:8443" \
+    connect-to-first-producer=true name=src \
+    src. ! videoconvert ! autovideosink \
+    src. ! autoaudiosink
+```
+
+> **JS/TS SDK:** `npm install @pollen-robotics/reachy-mini-sdk` — for building web apps.
+> See the [WebRTC example Space](https://huggingface.co/spaces/cduss/webrtc_example).
 
 ## 9. Recording & Replaying Motions
 
