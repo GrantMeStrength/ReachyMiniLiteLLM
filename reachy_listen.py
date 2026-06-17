@@ -34,6 +34,7 @@ ROBOT_SAMPLE_RATE = 16000
 LISTEN_SECONDS = 4.0
 SILENCE_THRESHOLD = 0.008  # RMS below this = silence (don't transcribe)
 MIN_TRANSCRIPT_LEN = 3     # ignore very short spurious transcripts
+ANTENNA_NEUTRAL = [0.08, -0.08]  # slight offset avoids trembling at exactly 0° (gearbox backlash)
 
 # ── Animation keyframes ────────────────────────────────────────────────
 SPEAKING_KEYFRAMES = [
@@ -48,8 +49,8 @@ SPEAKING_KEYFRAMES = [
 
 LISTENING_KEYFRAMES = [
     # Subtle "attentive" nod while listening
-    (0, 5, 3, 0, 0, 0.1, 0.1, 1.5),
-    (0, 0, -2, 0, 0, -0.05, -0.05, 1.5),
+    (0, 5, 3, 0, 0, 0.15, -0.1, 1.5),
+    (0, 0, -2, 0, 0, 0.08, -0.12, 1.5),
 ]
 
 
@@ -64,9 +65,8 @@ def animate_loop(mini, keyframes, stop_event):
                          duration=dur, method="minjerk")
         idx += 1
     # Return to neutral
-    mini.goto_target(head=create_head_pose(), body_yaw=0, antennas=[0, 0],
+    mini.goto_target(head=create_head_pose(), body_yaw=0, antennas=ANTENNA_NEUTRAL,
                      duration=0.5, method="minjerk")
-
 
 def record_audio(mini, duration):
     """Record from robot mic, return (mono_audio, doa_yaw_deg or None)."""
@@ -224,7 +224,7 @@ def main():
 
     except KeyboardInterrupt:
         print("\n\nStopping...")
-        mini.goto_target(head=create_head_pose(), body_yaw=0, antennas=[0, 0],
+        mini.goto_target(head=create_head_pose(), body_yaw=0, antennas=ANTENNA_NEUTRAL,
                          duration=0.5, method="minjerk")
         print("Goodbye!")
 
