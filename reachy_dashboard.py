@@ -198,8 +198,31 @@ async def get_camera():
     return StreamingResponse(buf, media_type="image/jpeg")
 
 
+def fix_camera_brightness():
+    """Disable powerline frequency filter to fix dark camera on macOS.
+    Uses uvc-util to send UVC SET_CUR request. Setting persists in firmware."""
+    import subprocess, shutil
+    uvc_util = shutil.which("uvc-util") or "/Users/john/Developer/tools/uvc-util"
+    try:
+        result = subprocess.run(
+            [uvc_util, "-I", "0", "-s", "power-line-frequency=0"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            print("📷 Camera brightness fix applied (power-line-frequency=0)")
+        else:
+            print(f"⚠️  Camera fix failed: {result.stderr.strip()}")
+    except FileNotFoundError:
+        print("⚠️  uvc-util not found — camera brightness not auto-fixed")
+    except Exception as e:
+        print(f"⚠️  Camera fix error: {e}")
+
+
 def main():
     global voice, mini
+
+    print("📷 Fixing camera brightness...")
+    fix_camera_brightness()
 
     print("🤖 Loading voice model...")
     voice = PiperVoice.load(PIPER_MODEL, PIPER_CONFIG)

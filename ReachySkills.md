@@ -280,18 +280,44 @@ with ReachyMini(media_backend="default") as mini:
 The 160° wide-angle camera can produce very dark images on macOS due to a known
 GStreamer auto-exposure bug ([issue #963](https://github.com/pollen-robotics/reachy_mini/issues/963)).
 
-**Best fix — CameraController app:**
+**Best fix — Command line (automated, scriptable):**
+
+Build [uvc-util](https://github.com/jtfrey/uvc-util) (open-source macOS UVC control tool):
+
+```bash
+git clone https://github.com/jtfrey/uvc-util.git
+cd uvc-util
+xcodebuild -scheme uvc-util -configuration Release -derivedDataPath build
+sudo cp build/Build/Products/Release/uvc-util /usr/local/bin/
+```
+
+Then disable the powerline frequency filter:
+
+```bash
+# Fix dark image (set power-line-frequency to 0 = Off)
+uvc-util -I 0 -s power-line-frequency=0
+
+# Check current value
+uvc-util -I 0 -g power-line-frequency
+
+# Values: 0=Off (bright ✅), 1=50Hz (dark), 2=60Hz (dark)
+```
+
+Or use the included helper script: `python fix_camera.py`
+
+> **How it works:** The UVC "power-line-frequency" control (selector 0x05 in the
+> Processing Unit) tells the camera to apply anti-flicker filtering. On the Reachy Mini's
+> MJPG-compressed camera module, this filter conflicts with GStreamer's auto-exposure on
+> macOS, resulting in extremely dark frames. Disabling it (value 0) lets auto-exposure
+> work normally. The setting persists in camera firmware until next power cycle.
+
+**Alternative — CameraController app (GUI, manual):**
 
 1. Install [CameraController](https://github.com/itaybre/CameraController)
    (open-source USB camera control for macOS).
 2. Open it, select the Reachy Mini camera.
 3. Switch to **Advanced** settings.
-4. **Toggle OFF "Powerline Frequency"** — this dramatically improves brightness.
-
-> **Note:** This setting cannot currently be controlled programmatically from Python
-> on macOS. OpenCV's AVFoundation backend doesn't support UVC controls, and there are
-> no reliable macOS UVC CLI tools available. CameraController is a manual one-time fix —
-> **the setting persists in the camera firmware** even after quitting the app.
+4. **Toggle OFF "Powerline Frequency"** — same effect as the CLI command above.
 
 **Other fixes:**
 
