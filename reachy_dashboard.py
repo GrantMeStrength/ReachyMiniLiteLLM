@@ -8,6 +8,7 @@ Endpoints:
     POST /announce  — pass through LLM for Karl-style delivery, then speak
     GET  /status    — check if robot is online
     GET  /history   — recent announcements
+    GET  /camera    — JPEG snapshot from robot's camera
 
 Examples:
     curl -X POST http://localhost:9000/say -H 'Content-Type: application/json' \
@@ -17,11 +18,13 @@ Examples:
          -d '{"event": "CI build failed on main", "context": "3 tests broken in auth module"}'
 
     curl http://localhost:9000/status
+    curl http://localhost:9000/camera -o snapshot.jpg
 """
 
 import asyncio
 import threading
 import time
+import io
 from collections import deque
 from datetime import datetime
 
@@ -29,9 +32,11 @@ import numpy as np
 import ollama
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from piper import PiperVoice
 from scipy.signal import resample
+from PIL import Image
 
 from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
@@ -182,6 +187,17 @@ def get_history():
     return list(history)
 
 
+@app.get("/camera")
+async def get_camera():
+    """Return a JPEG snapshot from the robot's camera."""
+    frame = await asyncio.to_thread(mini.media.get_frame)
+    img = Image.fromarray(frame)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/jpeg")
+
+
 def main():
     global voice, mini
 
@@ -196,6 +212,7 @@ def main():
     print(f"   POST /announce  — LLM-styled announcement")
     print(f"   GET  /status    — check robot status")
     print(f"   GET  /history   — recent announcements")
+    print(f"   GET  /camera    — JPEG snapshot from camera")
     print()
 
     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
