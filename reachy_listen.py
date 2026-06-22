@@ -34,7 +34,7 @@ ROBOT_SAMPLE_RATE = 16000
 LISTEN_SECONDS = 4.0
 SILENCE_THRESHOLD = 0.008  # RMS below this = silence (don't transcribe)
 MIN_TRANSCRIPT_LEN = 3     # ignore very short spurious transcripts
-ANTENNA_NEUTRAL = [0.08, -0.08]  # slight offset avoids trembling at exactly 0° (gearbox backlash)
+ANTENNA_NEUTRAL = [0.08, -0.15]  # slight offset avoids trembling at exactly 0° (gearbox backlash)
 
 # ── Animation keyframes ────────────────────────────────────────────────
 SPEAKING_KEYFRAMES = [
