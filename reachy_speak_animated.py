@@ -8,6 +8,7 @@ from piper import PiperVoice
 from scipy.signal import resample
 from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
+import reachy_leds
 
 OLLAMA_MODEL = "llama3.2"
 PIPER_MODEL = "piper_models/en_GB-northern_english_male-medium.onnx"
@@ -95,10 +96,13 @@ def main():
     samples = tts_synthesize(reply, voice)
     duration = len(samples) / ROBOT_SAMPLE_RATE
 
+    led_ser = reachy_leds.connect()
+
     with ReachyMini(media_backend="default") as mini:
         mini.media.start_playing()
 
-        # Start animation in a background thread
+        # Start LED glow and animation in background threads
+        led_thread, led_stop = reachy_leds.start_speaking_leds(led_ser)
         animator = threading.Thread(
             target=animate_while_speaking, args=(mini, duration)
         )
@@ -109,9 +113,13 @@ def main():
 
         # Wait for both to finish
         animator.join()
+        led_stop.set()
+        led_thread.join()
         time.sleep(0.3)
         mini.media.stop_playing()
 
+    if led_ser:
+        led_ser.close()
     print("✅ Done!")
 
 

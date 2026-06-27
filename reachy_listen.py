@@ -22,6 +22,7 @@ from faster_whisper import WhisperModel
 from piper import PiperVoice
 from scipy.signal import resample
 import ollama
+import reachy_leds
 
 from robot_karl_prompt import ROBOT_KARL_PROMPT as ROBOT_KARL_SYSTEM_PROMPT
 
@@ -107,8 +108,8 @@ def turn_toward_speaker(mini, doa_yaw_deg):
     print(f"   🧭 Turned toward speaker ({doa_yaw_deg:+.0f}°)", flush=True)
 
 
-def speak_animated(mini, voice, text, face_yaw=0):
-    """Speak text with animated head movements, facing toward face_yaw degrees."""
+def speak_animated(mini, voice, text, face_yaw=0, led_ser=None):
+    """Speak text with animated head movements and LED eyes."""
     # Generate audio
     chunks = []
     for ch in voice.synthesize(text):
@@ -137,15 +138,21 @@ def speak_animated(mini, voice, text, face_yaw=0):
                                    args=(mini, offset_keyframes, stop_anim))
     anim_thread.start()
 
+    # Start speaking LEDs
+    led_thread, led_stop = reachy_leds.start_speaking_leds(led_ser) if led_ser else (None, None)
+
     # Play audio
     mini.media.start_playing()
     mini.media.push_audio_sample(resampled.reshape(-1, 1))
     time.sleep(audio_duration + 0.3)
     mini.media.stop_playing()
 
-    # Stop animation
+    # Stop animation and LEDs
     stop_anim.set()
     anim_thread.join()
+    if led_stop:
+        led_stop.set()
+        led_thread.join()
 
 
 def main():
@@ -157,6 +164,7 @@ def main():
 
     print("Connecting to robot...", flush=True)
     mini = ReachyMini(media_backend="default")
+    led_ser = reachy_leds.connect()
     print("Connected! Robot Karl is listening...\n", flush=True)
 
     conversation_history = [
@@ -167,23 +175,26 @@ def main():
     speaker_yaw = 0  # degrees, 0 = straight ahead
 
     # Quick greeting
-    speak_animated(mini, voice, "Right then. I'm listening. What do you want?")
+    speak_animated(mini, voice, "Right then. I'm listening. What do you want?", led_ser=led_ser)
 
     try:
         while True:
-            # Listening animation
+            # Listening animation + idle eye blinks
             stop_listen_anim = threading.Event()
             listen_thread = threading.Thread(
                 target=animate_loop,
                 args=(mini, LISTENING_KEYFRAMES, stop_listen_anim)
             )
             listen_thread.start()
+            idle_led_thread, idle_led_stop = reachy_leds.start_idle_leds(led_ser)
 
             print("🎤 Listening...", flush=True)
             mono, doa_yaw = record_audio(mini, LISTEN_SECONDS)
 
             stop_listen_anim.set()
             listen_thread.join()
+            idle_led_stop.set()
+            idle_led_thread.join()
 
             # Check for silence
             rms = np.sqrt(np.mean(mono ** 2))
@@ -220,10 +231,13 @@ def main():
             print(f"🤖 Karl: {reply}\n", flush=True)
 
             # Speak while facing the speaker
-            speak_animated(mini, voice, reply, face_yaw=speaker_yaw)
+            speak_animated(mini, voice, reply, face_yaw=speaker_yaw, led_ser=led_ser)
 
     except KeyboardInterrupt:
         print("\n\nStopping...")
+        reachy_leds.off(led_ser)
+        if led_ser:
+            led_ser.close()
         mini.goto_target(head=create_head_pose(), body_yaw=0, antennas=ANTENNA_NEUTRAL,
                          duration=0.5, method="minjerk")
         print("Goodbye!")
