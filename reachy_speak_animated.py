@@ -14,6 +14,7 @@ OLLAMA_MODEL = "llama3.2"
 PIPER_MODEL = "piper_models/en_GB-northern_english_male-medium.onnx"
 PIPER_CONFIG = "piper_models/en_GB-northern_english_male-medium.onnx.json"
 ROBOT_SAMPLE_RATE = 16000
+ANTENNA_NEUTRAL = [0.08, -0.15]  # slight offset avoids gearbox backlash wobble
 
 from robot_karl_prompt import ROBOT_KARL_PROMPT as SYSTEM_PROMPT
 
@@ -78,7 +79,7 @@ def animate_while_speaking(mini: ReachyMini, duration: float):
     # Return to neutral
     mini.goto_target(
         head=create_head_pose(),
-        antennas=[0, 0],
+        antennas=ANTENNA_NEUTRAL,
         body_yaw=0.0,
         duration=0.6,
         method="minjerk",
