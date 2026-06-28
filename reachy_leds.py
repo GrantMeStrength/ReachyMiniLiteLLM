@@ -4,27 +4,89 @@ ESP32 is connected inside the robot's head via internal USB hub.
 Commands: OFF, L0:r,g,b, L1:r,g,b  (values 0-255)
 """
 
+import os
 import serial
+import serial.tools.list_ports
 import threading
 import time
 import random
 
-ESP32_PORT = "/dev/cu.usbmodem3121301"
+ESP32_PORT = "/dev/cu.usbmodem3121301"  # legacy fixed-port fallback
 ESP32_BAUD = 115200
 
 
-def connect(port=ESP32_PORT, baud=ESP32_BAUD):
-    """Open serial connection to ESP32. Returns None if unavailable."""
+def _probe(port, baud):
+    """Open a port and return the serial handle if it answers PING with PONG."""
     try:
         ser = serial.Serial(port, baud, timeout=1)
         time.sleep(0.5)
-        # Drain any boot output
         if ser.in_waiting:
-            ser.read(ser.in_waiting)
-        return ser
-    except Exception as e:
-        print(f"⚠️  LED ESP32 not available: {e}")
-        return None
+            ser.read(ser.in_waiting)  # drain boot output
+        ser.reset_input_buffer()
+        ser.write(b"PING\n")
+        time.sleep(0.2)
+        resp = ser.readline().decode(errors="replace").strip() if ser.in_waiting else ""
+        if resp == "PONG":
+            return ser
+        ser.close()
+    except Exception:
+        pass
+    return None
+
+
+def find_port(baud=ESP32_BAUD):
+    """Auto-detect the eye ESP32 port by probing for a PONG response.
+
+    Order: $REACHY_EYES_PORT, the legacy fixed port, then any usb serial
+    device that is not the Reachy Mini's own port (serial number 5B7B).
+    Returns an open serial handle, or None if no eye controller is found.
+    """
+    tried = set()
+    candidates = []
+
+    env_port = os.environ.get("REACHY_EYES_PORT")
+    if env_port:
+        candidates.append(env_port)
+    candidates.append(ESP32_PORT)
+
+    for p in serial.tools.list_ports.comports():
+        if "5B7B" in (p.serial_number or ""):  # skip Reachy Mini's own port
+            continue
+        if any(tag in p.device for tag in ("usbmodem", "usbserial", "wchusbserial")):
+            candidates.append(p.device)
+
+    for dev in candidates:
+        if dev in tried:
+            continue
+        tried.add(dev)
+        ser = _probe(dev, baud)
+        if ser:
+            return ser
+    return None
+
+
+def connect(port=None, baud=ESP32_BAUD):
+    """Open serial connection to the eye ESP32. Returns None if unavailable.
+
+    If `port` is given, connect directly; otherwise auto-detect (see
+    find_port). Auto-detection makes startup reliable when the ESP32
+    enumerates on a different /dev/cu.* path between reboots.
+    """
+    if port is not None:
+        try:
+            ser = serial.Serial(port, baud, timeout=1)
+            time.sleep(0.5)
+            if ser.in_waiting:
+                ser.read(ser.in_waiting)
+            return ser
+        except Exception as e:
+            print(f"⚠️  LED ESP32 not available on {port}: {e}")
+            return None
+
+    ser = find_port(baud)
+    if ser is None:
+        print("⚠️  LED eyes not detected — continuing without them.")
+    return ser
 
 
 def ping(ser):

@@ -5,7 +5,7 @@ RobotKarlVoice.md
 venv/
 
 # Piper voice models (large binary files — download per README)
-piper_models/*.onnx
+piper_models/
 
 # Python
 __pycache__/

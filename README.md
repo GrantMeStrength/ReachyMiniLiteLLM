@@ -6,29 +6,43 @@ Everything runs locally on your machine. No cloud APIs required.
 
 ## Quick Start
 
+The fastest way to meet Robot Karl is the one-command launcher — it checks
+every dependency, starts the daemon, applies the camera fix, wires up the
+LED eyes, and drops you into a conversation:
+
+```bash
+./start_karl.sh            # "Hey Karl" wake-word assistant (default)
+./start_karl.sh listen     # continuous conversation + speaker tracking
+./start_karl.sh say "Hi"   # quick offline speech test
+```
+
+See **[Fully Offline Interactive Karl](#fully-offline-interactive-karl)** for
+what it runs. To set things up manually instead:
+
 ```bash
 # 1. Set up environment
 python -m venv venv
 source venv/bin/activate
-pip install reachy-mini ollama piper-tts scipy gtts
+pip install -r requirements.txt
 
-# 2. Download a Piper voice model (~60MB, one-time)
+# 2. Download Karl's Piper voice model (~60MB, one-time)
 mkdir -p piper_models
-curl -sL "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx" \
-     -o piper_models/en_US-amy-medium.onnx
-curl -sL "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json" \
-     -o piper_models/en_US-amy-medium.onnx.json
+BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/northern_english_male/medium"
+curl -sL "$BASE/en_GB-northern_english_male-medium.onnx"      -o piper_models/en_GB-northern_english_male-medium.onnx
+curl -sL "$BASE/en_GB-northern_english_male-medium.onnx.json" -o piper_models/en_GB-northern_english_male-medium.onnx.json
 
 # 3. Start the daemon (in a separate terminal)
 reachy-mini-daemon
 
-# 4. Run!
+# 4. Run individual scripts!
 python wave_antennas.py                          # wave the antennas
 python play_tone.py                              # play a melody
 python speak.py                                  # speak via Google TTS (online)
 python reachy_say.py "Ey up!"                     # speak fully offline (macOS say)
 python reachy_speak_llm.py "Tell me a joke!"     # LLM + local TTS
 python reachy_speak_animated.py                  # LLM + TTS + head/antenna animation
+python reachy_wake.py                            # "Hey Karl" wake-word assistant
+python reachy_listen.py                          # continuous conversation
 python reachy_greet.py                           # watch for visitors + auto-greet
 python reachy_dashboard.py                       # webhook server on port 9000
 python reachy_eyes.py                            # test the LED eyes (requires ESP32)
@@ -55,6 +69,9 @@ curl http://localhost:9000/history
 
 | Script | Description | Internet? |
 |--------|-------------|-----------|
+| `start_karl.sh` | One-command launcher — checks deps, starts daemon, fixes camera, wires eyes, launches Karl | No |
+| `reachy_wake.py` | Always-on "Hey Karl" wake-word assistant (STT + LLM + TTS + eyes) | No |
+| `reachy_listen.py` | Continuous conversation with speaker direction tracking + eyes | No |
 | `wave_antennas.py` | Wave the antennas in a friendly greeting | No |
 | `play_tone.py` | Play a C-E-G-C melody through the speaker | No |
 | `speak.py` | Speak a phrase using Google TTS | Yes |
@@ -63,8 +80,75 @@ curl http://localhost:9000/history
 | `reachy_speak_animated.py` | LLM speech + animated head/antenna movements | No |
 | `reachy_greet.py` | Watches camera for motion, greets visitors with LLM speech | No |
 | `reachy_dashboard.py` | Webhook server — any agent can POST to make robot announce | No |
-| `reachy_leds.py` | Simple function-based LED eye control (fixed serial port) | No |
+| `fix_camera.py` | Fix dark camera image on macOS (UVC power-line-frequency) | No |
+| `reachy_leds.py` | Function-based LED eye control (auto-detects the ESP32 port) | No |
 | `reachy_eyes.py` | `RobotEyes` driver class — auto-detects port, state presets, pulse animation | No |
+
+## Fully Offline Interactive Karl
+
+Robot Karl is a complete conversational robot that runs **entirely on the
+Mac** (tested on a Mac Mini M4) — no cloud, no API keys. Each turn of the
+conversation flows through three local models:
+
+```
+🎤 mic → Whisper STT → Ollama LLM (Karl persona) → Piper TTS → 🔊 speaker
+                              ↓
+                  head/antenna animation + LED eyes + speaker tracking
+```
+
+| Stage | Runs locally with | Default |
+|-------|-------------------|---------|
+| Speech-to-text | `faster-whisper` | `base.en` |
+| Reasoning | Ollama | `llama3.2` |
+| Text-to-speech | Piper | `en_GB-northern_english_male` |
+
+Karl's dry, understated personality lives in
+[`robot_karl_prompt.py`](robot_karl_prompt.py) and is shared across every
+speaking script.
+
+### Launch it
+
+```bash
+./start_karl.sh            # "Hey Karl" wake-word assistant (default)
+./start_karl.sh listen     # always-listening conversation + speaker tracking
+```
+
+`start_karl.sh` is the reliable entry point. It:
+
+1. Finds a Python interpreter (`./venv`, then `~/venv`, then `python3`).
+2. Downloads the Piper voice model if it's missing.
+3. Ensures Ollama is running and the `llama3.2` model is pulled.
+4. Starts `reachy-mini-daemon` if it isn't already running.
+5. Applies the camera brightness fix (`fix_camera.py`).
+6. Auto-detects the LED-eye ESP32 and exports `REACHY_EYES_PORT`.
+7. Launches the chosen experience.
+
+Override defaults with environment variables, e.g.
+`OLLAMA_MODEL=qwen3:30b ./start_karl.sh`.
+
+### Two experiences
+
+- **`reachy_wake.py`** — Karl idles quietly until he hears **"Hey Karl"**,
+  then records your request, thinks, and replies. Best for hands-free,
+  always-on use.
+- **`reachy_listen.py`** — a continuous back-and-forth conversation that
+  also tracks the speaker's direction (DoA) and turns toward whoever is
+  talking.
+
+### LED eye states
+
+When the [LED eyes](#led-eyes) are connected, both experiences reflect
+Karl's state through the eyes (gracefully skipped if no ESP32 is found):
+
+| State | Eyes |
+|-------|------|
+| Idle / waiting | dim warm white with slow blinks |
+| Wake word heard | attentive amber |
+| Speaking | pulsing cyan/white glow |
+
+> **Mic note:** the conversation loops depend on the robot's microphone. If
+> Karl never reacts to speech, check the mic FPC cable orientation inside
+> the head.
 
 ## Speech & Voice
 

@@ -29,6 +29,7 @@ from faster_whisper import WhisperModel
 from piper import PiperVoice
 from scipy.signal import resample
 import ollama
+import reachy_leds
 
 from robot_karl_prompt import ROBOT_KARL_PROMPT as ROBOT_KARL_SYSTEM_PROMPT
 
@@ -162,8 +163,8 @@ def turn_toward_speaker(mini, doa_yaw_deg):
     print(f"   🧭 Turned toward speaker ({doa_yaw_deg:+.0f}°)", flush=True)
 
 
-def speak_animated(mini, voice, text, face_yaw=0):
-    """Speak text with animated head movements."""
+def speak_animated(mini, voice, text, face_yaw=0, led_ser=None):
+    """Speak text with animated head movements and speaking-glow eyes."""
     chunks = []
     for ch in voice.synthesize(text):
         chunks.append(ch.audio_float_array)
@@ -189,6 +190,8 @@ def speak_animated(mini, voice, text, face_yaw=0):
                                    args=(mini, offset_keyframes, stop_anim))
     anim_thread.start()
 
+    led_thread, led_stop = reachy_leds.start_speaking_leds(led_ser) if led_ser else (None, None)
+
     mini.media.start_playing()
     mini.media.push_audio_sample(resampled.reshape(-1, 1))
     time.sleep(audio_duration + 0.3)
@@ -196,6 +199,9 @@ def speak_animated(mini, voice, text, face_yaw=0):
 
     stop_anim.set()
     anim_thread.join()
+    if led_stop:
+        led_stop.set()
+        led_thread.join()
 
 
 def contains_wake_word(text):
@@ -238,6 +244,7 @@ def main():
 
     print("Connecting to robot...", flush=True)
     mini = ReachyMini(media_backend="default")
+    led_ser = reachy_leds.connect()  # auto-detects eye ESP32; None if absent
     print("Connected! Robot Karl is waiting for 'Hey Karl'...\n", flush=True)
 
     conversation_history = [
@@ -246,11 +253,28 @@ def main():
 
     speaker_yaw = 0
 
-    # Start idle animation
-    stop_idle = threading.Event()
-    idle_thread = threading.Thread(target=animate_loop,
-                                   args=(mini, IDLE_KEYFRAMES, stop_idle))
-    idle_thread.start()
+    # Idle state manages both the breathing animation and the idle eye blink.
+    idle = {"anim_stop": None, "anim_thread": None, "led_thread": None, "led_stop": None}
+
+    def start_idle():
+        idle["anim_stop"] = threading.Event()
+        idle["anim_thread"] = threading.Thread(
+            target=animate_loop, args=(mini, IDLE_KEYFRAMES, idle["anim_stop"]))
+        idle["anim_thread"].start()
+        if led_ser:
+            idle["led_thread"], idle["led_stop"] = reachy_leds.start_idle_leds(led_ser)
+
+    def stop_idle():
+        if idle["anim_stop"] is not None:
+            idle["anim_stop"].set()
+            idle["anim_thread"].join()
+            idle["anim_stop"] = None
+        if idle["led_stop"] is not None:
+            idle["led_stop"].set()
+            idle["led_thread"].join()
+            idle["led_stop"] = None
+
+    start_idle()
 
     try:
         while True:
@@ -275,9 +299,10 @@ def main():
             # ── WAKE STATE: wake word detected! ──
             print(f"🔔 Wake word detected! (heard: '{text}')", flush=True)
 
-            # Stop idle, start alert animation
-            stop_idle.set()
-            idle_thread.join()
+            # Stop idle, switch eyes to attentive amber
+            stop_idle()
+            if led_ser:
+                reachy_leds.set_color(led_ser, 255, 150, 0)
 
             if doa_yaw is not None:
                 speaker_yaw = doa_yaw
@@ -318,23 +343,16 @@ def main():
                 req_rms = np.sqrt(np.mean(request_mono ** 2))
                 if req_rms < SPEECH_THRESHOLD:
                     # They said "Hey Karl" but then nothing — prompt them
-                    speak_animated(mini, voice, "Yes? What do you want?", face_yaw=speaker_yaw)
-                    # Resume idle
-                    stop_idle = threading.Event()
-                    idle_thread = threading.Thread(target=animate_loop,
-                                                   args=(mini, IDLE_KEYFRAMES, stop_idle))
-                    idle_thread.start()
+                    speak_animated(mini, voice, "Yes? What do you want?", face_yaw=speaker_yaw, led_ser=led_ser)
+                    start_idle()
                     continue
 
                 segments, _ = whisper.transcribe(request_mono, language="en")
                 request_text = " ".join(seg.text for seg in segments).strip()
 
                 if len(request_text) < 3:
-                    speak_animated(mini, voice, "Didn't catch that. Try again.", face_yaw=speaker_yaw)
-                    stop_idle = threading.Event()
-                    idle_thread = threading.Thread(target=animate_loop,
-                                                   args=(mini, IDLE_KEYFRAMES, stop_idle))
-                    idle_thread.start()
+                    speak_animated(mini, voice, "Didn't catch that. Try again.", face_yaw=speaker_yaw, led_ser=led_ser)
+                    start_idle()
                     continue
 
                 print(f"👤 You: {request_text}", flush=True)
@@ -349,18 +367,17 @@ def main():
                 conversation_history = conversation_history[:1] + conversation_history[-18:]
 
             print(f"🤖 Karl: {reply}\n", flush=True)
-            speak_animated(mini, voice, reply, face_yaw=speaker_yaw)
+            speak_animated(mini, voice, reply, face_yaw=speaker_yaw, led_ser=led_ser)
 
             # Resume idle
-            stop_idle = threading.Event()
-            idle_thread = threading.Thread(target=animate_loop,
-                                           args=(mini, IDLE_KEYFRAMES, stop_idle))
-            idle_thread.start()
+            start_idle()
 
     except KeyboardInterrupt:
         print("\n\nStopping...", flush=True)
-        stop_idle.set()
-        idle_thread.join()
+        stop_idle()
+        if led_ser:
+            reachy_leds.off(led_ser)
+            led_ser.close()
         mini.goto_target(head=create_head_pose(), body_yaw=0, antennas=ANTENNA_NEUTRAL,
                          duration=0.5, method="minjerk")
         print("Goodbye!")
