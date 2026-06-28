@@ -184,12 +184,28 @@ any en_GB voice (e.g. `Reed`, `Sandy`, `Shelley`) works via `-v`.
 
 ## LED Eyes
 
+> ⚠️ **Experimental — not yet a reliable mod.** The ESP32 eye add-on is a
+> work in progress. Known issues:
+> - The board often comes up **unresponsive after powering on the robot** —
+>   no `PONG`, no LEDs. Last time it only started working after unplugging
+>   and re-plugging the ESP32 from the head's internal USB hub *while the
+>   robot was powered on*.
+> - It **can't be flashed through the internal USB hub** (esptool reports
+>   "No serial data received", and the BOOT/RESET buttons are sealed inside
+>   the head). Flash the XIAO **directly over USB-C** before installing it.
+> - The eye serial port enumerates on different `/dev/cu.*` paths between
+>   reboots, which is why the drivers auto-detect it.
+>
+> All speech/animation scripts treat the eyes as optional and run fine
+> without them.
+
 The robot has two RGB LEDs mounted as eyes inside the head, driven by an
 ESP32 (XIAO ESP32-C6) connected through the head's internal USB hub. These
 are two separate 3mm tri-color (RGB) LEDs — **not** an addressable strip —
 so each color leg is driven directly by its own GPIO via PWM. The firmware
 lives in [`esp32_led_eyes.ino`](esp32_led_eyes.ino) — flash it with the
-Arduino IDE.
+Arduino IDE, or with `arduino-cli` using the
+`esp32:esp32:XIAO_ESP32C6:CDCOnBoot=cdc` board profile.
 
 **Wiring** — each LED's R/G/B legs connect to a GPIO through a 150 Ω
 resistor. The build uses **common-anode** LEDs, so the common (fourth) leg
@@ -218,8 +234,8 @@ goes to **3V3** and the firmware drives the legs with inverted PWM:
 
 Two Python drivers are provided:
 
-- **`reachy_leds.py`** — lightweight function-based helpers with a fixed
-  serial port. Good for quick scripts.
+- **`reachy_leds.py`** — lightweight function-based helpers. Auto-detects
+  the eye controller's serial port (override with `REACHY_EYES_PORT`).
 - **`reachy_eyes.py`** — the `RobotEyes` class. Auto-detects the eye
   controller's serial port, exposes state presets (`listening()`,
   `thinking()`, `speaking()`, `idle()`, `alert()`, `error()`), and a
