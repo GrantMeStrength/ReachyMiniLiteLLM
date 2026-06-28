@@ -25,7 +25,8 @@ reachy-mini-daemon
 # 4. Run!
 python wave_antennas.py                          # wave the antennas
 python play_tone.py                              # play a melody
-python speak.py                                  # speak via Google TTS
+python speak.py                                  # speak via Google TTS (online)
+python reachy_say.py "Ey up!"                     # speak fully offline (macOS say)
 python reachy_speak_llm.py "Tell me a joke!"     # LLM + local TTS
 python reachy_speak_animated.py                  # LLM + TTS + head/antenna animation
 python reachy_greet.py                           # watch for visitors + auto-greet
@@ -57,12 +58,45 @@ curl http://localhost:9000/history
 | `wave_antennas.py` | Wave the antennas in a friendly greeting | No |
 | `play_tone.py` | Play a C-E-G-C melody through the speaker | No |
 | `speak.py` | Speak a phrase using Google TTS | Yes |
+| `reachy_say.py` | Speak fully offline using macOS `say` (British voice) | No |
 | `reachy_speak_llm.py` | Ask Ollama a question, speak the reply with Piper TTS | No |
 | `reachy_speak_animated.py` | LLM speech + animated head/antenna movements | No |
 | `reachy_greet.py` | Watches camera for motion, greets visitors with LLM speech | No |
 | `reachy_dashboard.py` | Webhook server — any agent can POST to make robot announce | No |
 | `reachy_leds.py` | Simple function-based LED eye control (fixed serial port) | No |
 | `reachy_eyes.py` | `RobotEyes` driver class — auto-detects port, state presets, pulse animation | No |
+
+## Speech & Voice
+
+Robot Karl speaks with a **British (English UK) accent**. There are three
+ways to give him a voice, depending on whether you want offline operation
+and how much you care about voice quality:
+
+| Script | Engine | Internet? | Notes |
+|--------|--------|-----------|-------|
+| `reachy_say.py` | macOS `say` | No | Zero setup — uses the built-in synthesizer. Defaults to the `Daniel` en_GB voice. |
+| `reachy_speak_llm.py` / `reachy_speak_animated.py` | Piper TTS | No | Highest quality. Uses the `en_GB-northern_english_male` voice (one-time model download) plus a local Ollama LLM. |
+| `speak.py` | Google TTS | Yes | Quick online fallback. |
+
+### Offline speech with `reachy_say.py`
+
+The simplest option needs **no model downloads, no Ollama, and no internet** —
+it drives the robot's speaker straight from the macOS speech synthesizer:
+
+```bash
+python reachy_say.py                                   # default greeting
+python reachy_say.py "Right then, let's get cracking!"  # custom line
+python reachy_say.py -v Reed "Ey up!"                   # pick another voice
+```
+
+List the available British voices with:
+
+```bash
+say -v '?' | grep en_GB
+```
+
+`Daniel` is the default to match Karl's Northern English Piper persona, but
+any en_GB voice (e.g. `Reed`, `Sandy`, `Shelley`) works via `-v`.
 
 ## LED Eyes
 
