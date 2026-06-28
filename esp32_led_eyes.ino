@@ -17,8 +17,7 @@
  *   Each color leg connects to its pin through a 150 ohm resistor.
  *   L0 (left eye):  D0=GPIO0 (R), D1=GPIO1 (G), D2=GPIO2 (B)
  *   L1 (right eye): D3=GPIO21 (R), D4=GPIO22 (B), D5=GPIO23 (G)
- *   Common leg: 3V3 for common-anode (inverted PWM below) or GND for
- *   common-cathode (remove the "255 - x" inversion in setLeft/setRight).
+ *   Common leg: 3V3 (common-anode LEDs — inverted PWM below).
  */
 
 #define L0_R  0

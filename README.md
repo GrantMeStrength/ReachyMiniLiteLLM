@@ -74,16 +74,18 @@ lives in [`esp32_led_eyes.ino`](esp32_led_eyes.ino) — flash it with the
 Arduino IDE.
 
 **Wiring** — each LED's R/G/B legs connect to a GPIO through a 150 Ω
-resistor; the common leg goes to 3V3 (common-anode) or GND (common-cathode):
+resistor. The build uses **common-anode** LEDs, so the common (fourth) leg
+goes to **3V3** and the firmware drives the legs with inverted PWM:
 
 | Eye | Red | Green | Blue |
 |-----|-----|-------|------|
 | Left (`L0`)  | D0 / GPIO0 | D1 / GPIO1 | D2 / GPIO2 |
 | Right (`L1`) | D3 / GPIO21 | D5 / GPIO23 | D4 / GPIO22 |
 
-> The firmware uses inverted PWM (`255 - value`) for **common-anode** LEDs.
-> If your LEDs are **common-cathode**, remove the inversion in
-> `setLeft()` / `setRight()`.
+> Common-anode means the firmware's inverted PWM (`255 - value`) is correct
+> as shipped. If you ever swap to common-cathode LEDs, tie the common leg to
+> GND and remove the inversion in `setLeft()` / `setRight()`.
+
 
 
 **Serial protocol** (115200 baud, newline-terminated):
