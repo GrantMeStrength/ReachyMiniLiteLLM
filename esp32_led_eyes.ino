@@ -13,9 +13,12 @@
  *
  * Responses: OK, ERR, PONG, READY (on boot)
  *
- * Wiring (common-anode RGB LEDs — inverted PWM):
- *   L0: pins 0 (R), 1 (G), 2 (B)
- *   L1: pins 21 (R), 22 (B), 23 (G)
+ * Wiring (XIAO ESP32-C6, one tri-color RGB LED per eye):
+ *   Each color leg connects to its pin through a 150 ohm resistor.
+ *   L0 (left eye):  D0=GPIO0 (R), D1=GPIO1 (G), D2=GPIO2 (B)
+ *   L1 (right eye): D3=GPIO21 (R), D4=GPIO22 (B), D5=GPIO23 (G)
+ *   Common leg: 3V3 for common-anode (inverted PWM below) or GND for
+ *   common-cathode (remove the "255 - x" inversion in setLeft/setRight).
  */
 
 #define L0_R  0

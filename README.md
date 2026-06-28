@@ -67,9 +67,24 @@ curl http://localhost:9000/history
 ## LED Eyes
 
 The robot has two RGB LEDs mounted as eyes inside the head, driven by an
-ESP32 (XIAO ESP32-C6) connected through the head's internal USB hub. The
-firmware lives in [`esp32_led_eyes.ino`](esp32_led_eyes.ino) — flash it with
-the Arduino IDE.
+ESP32 (XIAO ESP32-C6) connected through the head's internal USB hub. These
+are two separate 3mm tri-color (RGB) LEDs — **not** an addressable strip —
+so each color leg is driven directly by its own GPIO via PWM. The firmware
+lives in [`esp32_led_eyes.ino`](esp32_led_eyes.ino) — flash it with the
+Arduino IDE.
+
+**Wiring** — each LED's R/G/B legs connect to a GPIO through a 150 Ω
+resistor; the common leg goes to 3V3 (common-anode) or GND (common-cathode):
+
+| Eye | Red | Green | Blue |
+|-----|-----|-------|------|
+| Left (`L0`)  | D0 / GPIO0 | D1 / GPIO1 | D2 / GPIO2 |
+| Right (`L1`) | D3 / GPIO21 | D5 / GPIO23 | D4 / GPIO22 |
+
+> The firmware uses inverted PWM (`255 - value`) for **common-anode** LEDs.
+> If your LEDs are **common-cathode**, remove the inversion in
+> `setLeft()` / `setRight()`.
+
 
 **Serial protocol** (115200 baud, newline-terminated):
 
