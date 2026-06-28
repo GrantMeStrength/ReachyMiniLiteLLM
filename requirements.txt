@@ -1,5 +1,6 @@
 reachy-mini
 ollama
+pyserial
 piper-tts
 scipy
 gtts
