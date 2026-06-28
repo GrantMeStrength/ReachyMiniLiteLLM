@@ -222,7 +222,11 @@ goes to **3V3** and the firmware drives the legs with inverted PWM:
 
 
 
-**Serial protocol** (115200 baud, newline-terminated):
+**Serial protocol** (newline-terminated). The XIAO ESP32-C6 uses native
+USB-Serial/JTAG, which **ignores the baud rate** — the `115200` in the
+drivers is nominal. `RESET` only works once the firmware is already running
+over USB; if the board is silent (no `READY`/`PONG`), a soft reset won't
+revive it — re-plug the ESP32 or reflash it over USB-C instead.
 
 | Command | Action |
 |---------|--------|
@@ -230,6 +234,7 @@ goes to **3V3** and the firmware drives the legs with inverted PWM:
 | `L1:r,g,b` | Set right eye |
 | `LA:r,g,b` | Set both eyes |
 | `OFF` | Turn both LEDs off |
+| `RESET` | Soft-reboot the board (re-emits `READY` on boot) |
 | `PING` | Health check — returns `PONG` |
 
 Two Python drivers are provided:

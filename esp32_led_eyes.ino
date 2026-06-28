@@ -10,6 +10,7 @@
  *   LA:r,g,b   — Set both eyes (values 0-255)
  *   OFF        — Turn off both LEDs
  *   PING       — Returns PONG (health check)
+ *   RESET      — Reboot the board (re-emits READY on boot)
  *
  * Responses: OK, ERR, PONG, READY (on boot)
  *
@@ -52,6 +53,14 @@ void processCommand(String cmd) {
 
   if (cmd == "OFF") { allOff(); Serial.println("OK"); return; }
   if (cmd == "PING") { Serial.println("PONG"); return; }
+  if (cmd == "RESET") {
+    allOff();
+    Serial.println("OK");
+    Serial.flush();
+    delay(50);
+    ESP.restart();  // reboots and re-emits READY
+    return;
+  }
 
   if (cmd.length() < 6 || cmd.charAt(0) != 'L' || cmd.charAt(2) != ':') {
     Serial.println("ERR"); return;

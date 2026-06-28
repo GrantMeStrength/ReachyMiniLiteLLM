@@ -138,6 +138,23 @@ def off(ser):
         ser.read(ser.in_waiting)
 
 
+def reset(ser, wait_ready=3.0):
+    """Soft-reboot the ESP32 (firmware RESET command) and wait for READY.
+
+    Returns True if the board re-emitted 'READY' within wait_ready seconds.
+    """
+    if not ser:
+        return False
+    ser.reset_input_buffer()
+    ser.write(b"RESET\n")
+    deadline = time.time() + wait_ready
+    while time.time() < deadline:
+        line = ser.readline().decode(errors="replace").strip()
+        if line == "READY":
+            return True
+    return False
+
+
 def speaking_glow(ser, stop_event):
     """Pulsing cyan/white glow while speaking."""
     if not ser:
