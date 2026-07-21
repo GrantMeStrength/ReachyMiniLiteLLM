@@ -19,6 +19,8 @@ Examples:
   karlctl status
   karlctl wake
   karlctl look right
+  karlctl body left
+  karlctl antennas up
   karlctl speak "Hello, I am Karl"
   karlctl blink random 8
   karlctl eyes 0,120,255
@@ -34,6 +36,8 @@ import tempfile
 import time
 import urllib.request
 import wave
+import signal
+import threading
 
 import numpy as np
 
@@ -75,11 +79,11 @@ def _daemon_get(path):
 
 
 # ----------------------------------------------------------------------------- motion
-def _pose(rx=0.0, ry=0.0, rz=0.0):
-    from scipy.spatial.transform import Rotation as R
-    p = np.eye(4)
-    p[:3, :3] = R.from_euler("xyz", [rx, ry, rz], degrees=True).as_matrix()
-    return p
+def _pose(roll=0.0, pitch=0.0, yaw=0.0):
+    from reachy_mini.utils import create_head_pose
+    return create_head_pose(
+        roll=roll, pitch=pitch, yaw=yaw, degrees=True
+    )
 
 
 def _connect_motion():
@@ -91,9 +95,22 @@ def _connect_motion():
 
 
 LOOKS = {
-    "left": dict(ry=-25), "right": dict(ry=25),
-    "up": dict(rx=-20), "down": dict(rx=20),
+    "left": dict(yaw=25), "right": dict(yaw=-25),
+    "up": dict(pitch=-20), "down": dict(pitch=20),
+    "tilt-left": dict(roll=18), "tilt-right": dict(roll=-18),
     "center": dict(), "front": dict(),
+}
+
+BODY_YAWS = {
+    "left": np.deg2rad(35),
+    "right": np.deg2rad(-35),
+    "center": 0.0,
+}
+
+ANTENNA_POSITIONS = {
+    "up": [0.6, -0.6],
+    "down": [-0.6, 0.6],
+    "neutral": [0.08, -0.15],
 }
 
 
@@ -163,11 +180,25 @@ def cmd_look(args):
     return _ok(action="look", direction=direction)
 
 
+def cmd_body(args):
+    direction = args.direction.lower()
+    r = _connect_motion()
+    r.goto_target(body_yaw=BODY_YAWS[direction], duration=args.duration)
+    return _ok(action="body", direction=direction)
+
+
+def cmd_antennas(args):
+    position = args.position.lower()
+    r = _connect_motion()
+    r.goto_target(antennas=ANTENNA_POSITIONS[position], duration=args.duration)
+    return _ok(action="antennas", position=position)
+
+
 def cmd_nod(args):
     r = _connect_motion()
     for _ in range(args.times):
-        r.goto_target(_pose(rx=15), duration=0.3)
-        r.goto_target(_pose(rx=-5), duration=0.3)
+        r.goto_target(_pose(pitch=15), duration=0.3)
+        r.goto_target(_pose(pitch=-5), duration=0.3)
     r.goto_target(_pose(), duration=0.3)
     return _ok(action="nod", times=args.times)
 
@@ -175,8 +206,8 @@ def cmd_nod(args):
 def cmd_shake(args):
     r = _connect_motion()
     for _ in range(args.times):
-        r.goto_target(_pose(ry=20), duration=0.25)
-        r.goto_target(_pose(ry=-20), duration=0.25)
+        r.goto_target(_pose(yaw=20), duration=0.25)
+        r.goto_target(_pose(yaw=-20), duration=0.25)
     r.goto_target(_pose(), duration=0.25)
     return _ok(action="shake", times=args.times)
 
@@ -195,8 +226,8 @@ def cmd_speak(args):
         t0 = time.time()
         i = 0
         while time.time() - t0 < dur:
-            r.goto_target(_pose(rx=7 if i % 2 == 0 else -3,
-                                ry=4 if i % 2 == 0 else -4), duration=0.35)
+            r.goto_target(_pose(pitch=7 if i % 2 == 0 else -3,
+                                yaw=4 if i % 2 == 0 else -4), duration=0.35)
             i += 1
         r.goto_target(_pose(), duration=0.4)
     else:
@@ -256,6 +287,33 @@ def cmd_blink(args):
         ser.close()
 
 
+def cmd_eyes_idle(args):
+    import reachy_leds
+    ser = reachy_leds.connect()
+    if ser is None:
+        return _err("eyes not detected")
+    color = _parse_rgb(args.color)
+    stop = threading.Event()
+
+    def request_stop(_signum, _frame):
+        stop.set()
+
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
+    try:
+        reachy_leds.idle_blink(
+            ser,
+            stop,
+            color=color,
+            min_interval=args.min_interval,
+            max_interval=args.max_interval,
+        )
+        return _ok(action="eyes-idle", state="stopped")
+    finally:
+        reachy_leds.off(ser)
+        ser.close()
+
+
 def cmd_see(args):
     import cv2
     out = args.out or os.path.join(tempfile.gettempdir(), "karl_view.jpg")
@@ -300,9 +358,23 @@ def build_parser():
     sub.add_parser("wake", help="Play the wake-up motion emote.").set_defaults(func=cmd_wake)
 
     pl = sub.add_parser("look", help="Turn the head to look in a direction.")
-    pl.add_argument("direction", help="left|right|up|down|center")
+    pl.add_argument(
+        "direction",
+        choices=list(LOOKS),
+        help="left|right|up|down|tilt-left|tilt-right|center",
+    )
     pl.add_argument("--duration", type=float, default=0.6)
     pl.set_defaults(func=cmd_look)
+
+    pbody = sub.add_parser("body", help="Rotate Karl's body.")
+    pbody.add_argument("direction", choices=list(BODY_YAWS))
+    pbody.add_argument("--duration", type=float, default=0.7)
+    pbody.set_defaults(func=cmd_body)
+
+    pantennas = sub.add_parser("antennas", help="Position both antennas.")
+    pantennas.add_argument("position", choices=list(ANTENNA_POSITIONS))
+    pantennas.add_argument("--duration", type=float, default=0.4)
+    pantennas.set_defaults(func=cmd_antennas)
 
     pn = sub.add_parser("nod", help="Nod the head (yes).")
     pn.add_argument("times", nargs="?", type=int, default=2)
@@ -327,6 +399,12 @@ def build_parser():
     pb.add_argument("color", nargs="?", default="random", help="'r,g,b' or 'random'")
     pb.add_argument("times", nargs="?", type=int, default=6)
     pb.set_defaults(func=cmd_blink)
+
+    pi = sub.add_parser("eyes-idle", help="Run periodic eye blinking until stopped.")
+    pi.add_argument("color", nargs="?", default="40,35,30")
+    pi.add_argument("--min-interval", type=float, default=2.0)
+    pi.add_argument("--max-interval", type=float, default=5.0)
+    pi.set_defaults(func=cmd_eyes_idle)
 
     pv = sub.add_parser("see", help="Capture a still from Karl's camera to a JPEG.")
     pv.add_argument("--out", default=None, help="Output JPEG path (default: /tmp/karl_view.jpg)")

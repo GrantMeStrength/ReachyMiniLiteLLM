@@ -16,6 +16,28 @@ LED eyes, and drops you into a conversation:
 ./start_karl.sh say "Hi"   # quick offline speech test
 ```
 
+### Karl Controller macOS app
+
+`KarlController/` contains a native SwiftUI master control application for
+starting, stopping, diagnosing, and interacting with Robot Karl. It includes:
+
+- daemon, LED-eye, and camera status
+- robot and interactive-mode start/stop controls
+- wake, head direction/tilt, body rotation, antenna, gesture, speech, and eye controls
+- eye presets, custom colors, immediate blinks, and periodic idle blinking
+- camera snapshots
+- serial-port, process, and log diagnostics
+
+Build the app and install it on the Desktop:
+
+```bash
+./KarlController/build_app.sh --install
+```
+
+Then open **Karl Controller.app** from the Desktop. Set `KARL_REPO` before
+launching if the repository is stored somewhere other than
+`/Users/john/Developer/ReachyMiniLiteLLM`.
+
 See **[Fully Offline Interactive Karl](#fully-offline-interactive-karl)** for
 what it runs. To set things up manually instead:
 
@@ -184,17 +206,15 @@ any en_GB voice (e.g. `Reed`, `Sandy`, `Shelley`) works via `-v`.
 
 ## LED Eyes
 
-> ⚠️ **Experimental — not yet a reliable mod.** The ESP32 eye add-on is a
-> work in progress. Known issues:
-> - The board often comes up **unresponsive after powering on the robot** —
->   no `PONG`, no LEDs. Last time it only started working after unplugging
->   and re-plugging the ESP32 from the head's internal USB hub *while the
->   robot was powered on*.
-> - It **can't be flashed through the internal USB hub** (esptool reports
->   "No serial data received", and the BOOT/RESET buttons are sealed inside
->   the head). Flash the XIAO **directly over USB-C** before installing it.
-> - The eye serial port enumerates on different `/dev/cu.*` paths between
->   reboots, which is why the drivers auto-detect it.
+> **USB startup recovery:** The ESP32 can enumerate but remain unresponsive
+> after the robot powers on. The eye drivers automatically recover this state
+> by resetting the Espressif USB device and restarting the application through
+> its serial control lines. They also auto-detect the changing `/dev/cu.*`
+> device path.
+>
+> The XIAO still **can't be flashed through the internal USB hub** (esptool
+> reports "No serial data received"). Flash it directly over USB-C before
+> installing it inside the head.
 >
 > All speech/animation scripts treat the eyes as optional and run fine
 > without them.
@@ -224,9 +244,9 @@ goes to **3V3** and the firmware drives the legs with inverted PWM:
 
 **Serial protocol** (newline-terminated). The XIAO ESP32-C6 uses native
 USB-Serial/JTAG, which **ignores the baud rate** — the `115200` in the
-drivers is nominal. `RESET` only works once the firmware is already running
-over USB; if the board is silent (no `READY`/`PONG`), a soft reset won't
-revive it — re-plug the ESP32 or reflash it over USB-C instead.
+drivers is nominal. `RESET` reboots responsive firmware; when the board is
+silent, the Python drivers instead reset the USB device and pulse its serial
+control lines before retrying `PING`.
 
 | Command | Action |
 |---------|--------|

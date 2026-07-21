@@ -19,7 +19,6 @@ Usage:
 """
 
 import serial
-import serial.tools.list_ports
 import time
 import threading
 
@@ -45,44 +44,20 @@ class RobotEyes:
     def __init__(self, port=None):
         """Connect to the eye controller. Auto-detects port if not specified."""
         if port is None:
-            port = self._find_port()
-        if port is None:
-            raise ConnectionError(
-                "Could not find XIAO eye controller. "
-                "Check USB connection and that firmware is flashed."
-            )
-        self._ser = serial.Serial(port, self.BAUD, timeout=self.TIMEOUT)
+            from reachy_leds import find_port
+
+            self._ser = find_port(self.BAUD)
+            if self._ser is None:
+                raise ConnectionError(
+                    "Could not find XIAO eye controller. "
+                    "Check USB connection and that firmware is flashed."
+                )
+        else:
+            self._ser = serial.Serial(port, self.BAUD, timeout=self.TIMEOUT)
         time.sleep(0.5)  # wait for READY
         self._ser.reset_input_buffer()
         self._lock = threading.Lock()
         self._pulse_stop = None
-
-    def _find_port(self):
-        """Find the XIAO serial port (not the Reachy daemon port)."""
-        reachy_port = None
-        candidates = []
-        for p in serial.tools.list_ports.comports():
-            # Skip the Reachy Mini's own port
-            if "5B7B" in (p.serial_number or ""):
-                reachy_port = p.device
-                continue
-            if "usbmodem" in p.device or "usbserial" in p.device or "wchusbserial" in p.device:
-                candidates.append(p.device)
-        # Try each candidate
-        for dev in candidates:
-            try:
-                s = serial.Serial(dev, self.BAUD, timeout=1)
-                time.sleep(0.3)
-                s.reset_input_buffer()
-                s.write(b"PING\n")
-                resp = s.readline().decode().strip()
-                if resp == "PONG":
-                    s.close()
-                    return dev
-                s.close()
-            except Exception:
-                continue
-        return None
 
     def _send(self, cmd):
         """Send a command and wait for response."""

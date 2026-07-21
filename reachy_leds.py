@@ -13,6 +13,36 @@ import random
 
 ESP32_PORT = "/dev/cu.usbmodem3121301"  # legacy fixed-port fallback
 ESP32_BAUD = 115200
+ESPRESSIF_VID = 0x303A
+ESP32_USB_JTAG_PID = 0x1001
+
+
+def _reset_usb_device(serial_number):
+    """Reset the eye controller when macOS leaves its USB serial port hung."""
+    try:
+        import usb.core
+        import usb.util
+
+        for dev in usb.core.find(find_all=True, idVendor=ESPRESSIF_VID,
+                                 idProduct=ESP32_USB_JTAG_PID):
+            if usb.util.get_string(dev, dev.iSerialNumber) == serial_number:
+                dev.reset()
+                usb.util.dispose_resources(dev)
+                time.sleep(2)
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _recover_serial(ser):
+    """Restart the ESP32 application through its USB serial control lines."""
+    ser.dtr = False
+    ser.rts = True
+    time.sleep(0.1)
+    ser.rts = False
+    time.sleep(2)
+    ser.reset_input_buffer()
 
 
 def _probe(port, baud):
@@ -26,6 +56,11 @@ def _probe(port, baud):
         ser.write(b"PING\n")
         time.sleep(0.2)
         resp = ser.readline().decode(errors="replace").strip() if ser.in_waiting else ""
+        if resp != "PONG":
+            _recover_serial(ser)
+            ser.write(b"PING\n")
+            time.sleep(0.2)
+            resp = ser.readline().decode(errors="replace").strip() if ser.in_waiting else ""
         if resp == "PONG":
             return ser
         ser.close()
@@ -44,12 +79,19 @@ def find_port(baud=ESP32_BAUD):
     tried = set()
     candidates = []
 
+    ports = list(serial.tools.list_ports.comports())
+    for p in ports:
+        if (p.vid, p.pid) == (ESPRESSIF_VID, ESP32_USB_JTAG_PID):
+            _reset_usb_device(p.serial_number)
+            ports = list(serial.tools.list_ports.comports())
+            break
+
     env_port = os.environ.get("REACHY_EYES_PORT")
     if env_port:
         candidates.append(env_port)
     candidates.append(ESP32_PORT)
 
-    for p in serial.tools.list_ports.comports():
+    for p in ports:
         if "5B7B" in (p.serial_number or ""):  # skip Reachy Mini's own port
             continue
         if any(tag in p.device for tag in ("usbmodem", "usbserial", "wchusbserial")):
@@ -172,22 +214,21 @@ def speaking_glow(ser, stop_event):
     off(ser)
 
 
-def idle_blink(ser, stop_event):
+def idle_blink(ser, stop_event, color=(40, 35, 30),
+               min_interval=2.0, max_interval=5.0):
     """Occasional soft blink while idle/listening — like slow eye blinks."""
     if not ser:
         return
+    r, g, b = color
     while not stop_event.is_set():
-        # Eyes dim warm white
-        set_color(ser, 40, 35, 30)
-        # Wait 2-5 seconds between blinks
-        stop_event.wait(random.uniform(2.0, 5.0))
+        set_color(ser, r, g, b)
+        stop_event.wait(random.uniform(min_interval, max_interval))
         if stop_event.is_set():
             break
-        # Blink: fade out then back in
-        for brightness in [20, 5, 0, 0, 5, 20, 40]:
+        for scale in [0.5, 0.12, 0, 0, 0.12, 0.5, 1]:
             if stop_event.is_set():
                 break
-            set_color(ser, brightness, int(brightness * 0.9), int(brightness * 0.75))
+            set_color(ser, int(r * scale), int(g * scale), int(b * scale))
             time.sleep(0.06)
     off(ser)
 

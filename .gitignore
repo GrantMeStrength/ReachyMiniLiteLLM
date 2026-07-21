@@ -22,3 +22,7 @@ build/
 # IDE
 .vscode/
 .idea/
+
+# Swift Package Manager and generated macOS app
+.build/
+KarlController/build/

@@ -1,6 +1,7 @@
 reachy-mini
 ollama
 pyserial
+pyusb
 piper-tts
 scipy
 gtts

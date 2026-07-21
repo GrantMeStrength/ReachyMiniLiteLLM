@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Karl Controller</string>
+    <key>CFBundleExecutable</key>
+    <string>KarlController</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.grantmestrength.KarlController</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Karl Controller</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Karl Controller uses the Reachy Mini camera for diagnostics and snapshots.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Karl Controller starts Robot Karl’s local speech interaction modes.</string>
+</dict>
+</plist>
