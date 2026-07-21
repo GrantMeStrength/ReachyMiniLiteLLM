@@ -1,0 +1,7 @@
+#!/bin/bash
+# karlctl launcher — runs the Robot Karl control CLI with the interpreter that
+# has reachy_mini + cv2 + pyserial + scipy installed.
+# Usage: karlctl <status|wake|look|nod|shake|speak|eyes|blink|see|demo> [args...]
+PYTHON="${KARL_PYTHON:-/Users/john/reachy_mini_env/bin/python}"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$PYTHON" "$DIR/karlctl.py" "$@"
