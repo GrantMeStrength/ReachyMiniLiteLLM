@@ -48,9 +48,13 @@ karlctl status                 # {"daemon":true,"eyes":true,"camera":true}
 
 # Motion
 karlctl wake                   # wake-up emote
-karlctl look right             # left | right | up | down | center
+karlctl look right             # left | right | up | down | tilt-left | tilt-right | center
+karlctl body left              # left | right | center
+karlctl antennas up            # up | down | neutral
 karlctl nod 2                  # nod "yes" N times
 karlctl shake 2                # shake "no" N times
+karlctl track on               # follow a detected face (track off to stop)
+karlctl emotion curious1       # play an official recorded emotion
 
 # Speech (British voice "Daniel" by default; plays on Karl's speaker)
 karlctl speak "Hello, I am Karl"
@@ -73,8 +77,7 @@ karlctl see --out /tmp/karl_view.jpg
 To answer "what do you see?" / "look around":
 
 1. Run `karlctl see --out /tmp/karl_view.jpg`.
-2. The result line gives the saved JPEG `path` (1920x1080) plus a
-   `brightness` value.
+2. The result line gives the saved JPEG `path` and encoded byte count.
 3. **Open / view that JPEG file** and describe its contents to the user.
 
 Optionally have Karl `look` in a direction first, then `see`, to inspect a
@@ -85,6 +88,8 @@ different part of the room.
 - One action at a time; commands return as soon as the action completes.
 - Speech uses fully-offline macOS text-to-speech, routed through the daemon's
   speaker (no audio-device conflicts).
+- Motion and tracking use the Reachy Mini 1.9 daemon REST API. Camera stills
+  use the SDK's daemon-backed `get_frame_jpeg()` media path.
 - If `eyes` or `camera` report false in `status`, that subsystem is
   unplugged — the other commands still work.
 - Underlying code lives in the repo `ReachyMiniLiteLLM` (`karlctl.py`).

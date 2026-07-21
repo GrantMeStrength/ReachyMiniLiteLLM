@@ -1,8 +1,8 @@
 """Reachy Mini watches for a person and greets them.
 
-Uses motion detection on the robot's camera. When significant motion is
-detected after a period of stillness, Robot Karl says hello with animated movement.
-Works in low light where face detection would fail.
+Uses the Reachy Mini daemon's face tracker, with lightweight motion detection
+as a low-light fallback. When a visitor is detected, Robot Karl says hello
+with animated movement.
 
 Usage:
     python reachy_greet.py
@@ -12,7 +12,6 @@ Usage:
 import time
 import threading
 import numpy as np
-import cv2
 import ollama
 from piper import PiperVoice
 from scipy.signal import resample
@@ -29,6 +28,8 @@ COOLDOWN_SECONDS = 30  # don't re-greet for this long
 CHECK_INTERVAL = 0.5   # seconds between camera checks
 MOTION_THRESHOLD = 5.0  # mean pixel diff to count as motion
 MOTION_FRAMES = 3       # consecutive motion frames before greeting
+FACE_FRAMES = 2         # consecutive face observations before greeting
+TRACKING_WEIGHT = 0.35  # gently follow visitors without dominating motion
 
 from robot_karl_prompt import ROBOT_KARL_PROMPT
 
@@ -92,6 +93,19 @@ def speak_and_animate(mini: ReachyMini, voice: PiperVoice, text: str):
     mini.media.stop_playing()
 
 
+def motion_level(frame: np.ndarray, previous: np.ndarray | None):
+    """Calculate motion from a sparse grayscale sample without OpenCV."""
+    sampled = frame[::6, ::6].astype(np.float32)
+    gray = (
+        sampled[:, :, 0] * 0.299
+        + sampled[:, :, 1] * 0.587
+        + sampled[:, :, 2] * 0.114
+    )
+    if previous is None:
+        return gray, 0.0
+    return gray, float(np.abs(gray - previous).mean())
+
+
 def main():
     print("🤖 Loading voice model...")
     voice = PiperVoice.load(PIPER_MODEL, PIPER_CONFIG)
@@ -100,8 +114,12 @@ def main():
     last_greet_time = 0
     prev_gray = None
     motion_count = 0
+    face_count = 0
 
-    with ReachyMini(media_backend="default") as mini:
+    with ReachyMini(
+        media_backend="default", connection_mode="localhost_only"
+    ) as mini:
+        mini.start_head_tracking(weight=TRACKING_WEIGHT)
         try:
             while True:
                 frame = mini.media.get_frame()
@@ -109,43 +127,39 @@ def main():
                     time.sleep(CHECK_INTERVAL)
                     continue
 
-                # Convert to small grayscale for fast comparison
-                small = cv2.resize(frame, (320, 180))
-                gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
-                gray = cv2.GaussianBlur(gray, (21, 21), 0)
-
-                if prev_gray is not None:
-                    diff = cv2.absdiff(prev_gray, gray)
-                    mean_diff = diff.mean()
-
-                    if mean_diff > MOTION_THRESHOLD:
-                        motion_count += 1
-                        if motion_count == 1:
-                            print(f"   Motion detected (diff={mean_diff:.1f})...")
-                    else:
-                        motion_count = 0
-
-                    now = time.time()
-                    if motion_count >= MOTION_FRAMES and now - last_greet_time > COOLDOWN_SECONDS:
-                        print("😊 Someone's here! Generating greeting...")
-                        resp = ollama.chat(model=OLLAMA_MODEL, messages=[
-                            {"role": "system", "content": SYSTEM_PROMPT},
-                            {"role": "user", "content": "Someone just appeared! Say hello."},
-                        ])
-                        greeting = resp.message.content
-                        print(f'🗣️  "{greeting}"')
-                        speak_and_animate(mini, voice, greeting)
-                        last_greet_time = time.time()
-                        motion_count = 0
-                        prev_gray = None  # reset baseline after greeting
-                        time.sleep(2)
-                        continue
-
+                gray, mean_diff = motion_level(frame, prev_gray)
                 prev_gray = gray
+                motion_count = motion_count + 1 if mean_diff > MOTION_THRESHOLD else 0
+                face = mini.get_tracked_face(wait=False)
+                face_count = face_count + 1 if face.detected else 0
+
+                now = time.time()
+                visitor_seen = face_count >= FACE_FRAMES or motion_count >= MOTION_FRAMES
+                if visitor_seen and now - last_greet_time > COOLDOWN_SECONDS:
+                    reason = "face" if face_count >= FACE_FRAMES else "motion"
+                    print(f"😊 Visitor detected by {reason}! Generating greeting...")
+                    resp = ollama.chat(model=OLLAMA_MODEL, messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": "Someone just appeared! Say hello."},
+                    ])
+                    greeting = resp.message.content
+                    print(f'🗣️  "{greeting}"')
+                    mini.stop_head_tracking()
+                    speak_and_animate(mini, voice, greeting)
+                    mini.start_head_tracking(weight=TRACKING_WEIGHT)
+                    last_greet_time = time.time()
+                    motion_count = 0
+                    face_count = 0
+                    prev_gray = None
+                    time.sleep(2)
+                    continue
+
                 time.sleep(CHECK_INTERVAL)
 
         except KeyboardInterrupt:
             print("\n👋 Stopping watcher.")
+        finally:
+            mini.stop_head_tracking()
 
 
 if __name__ == "__main__":

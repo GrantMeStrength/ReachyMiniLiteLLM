@@ -35,11 +35,12 @@ import sys
 import tempfile
 import time
 import urllib.request
+import urllib.parse
 import wave
 import signal
 import threading
 
-import numpy as np
+import math
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
@@ -62,12 +63,11 @@ def _err(msg):
     return 1
 
 
-def _daemon_post(path, payload):
+def _daemon_post(path, payload=None):
+    data = None if payload is None else json.dumps(payload).encode()
+    headers = {} if data is None else {"Content-Type": "application/json"}
     req = urllib.request.Request(
-        DAEMON + path,
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
+        DAEMON + path, data=data, headers=headers, method="POST"
     )
     with urllib.request.urlopen(req, timeout=8) as r:
         return r.read().decode()
@@ -79,19 +79,31 @@ def _daemon_get(path):
 
 
 # ----------------------------------------------------------------------------- motion
-def _pose(roll=0.0, pitch=0.0, yaw=0.0):
-    from reachy_mini.utils import create_head_pose
-    return create_head_pose(
-        roll=roll, pitch=pitch, yaw=yaw, degrees=True
-    )
+def _enable_motors():
+    _daemon_post("/api/motors/set_mode/enabled")
 
 
-def _connect_motion():
-    from reachy_mini import ReachyMini
-    r = ReachyMini(media_backend="no_media", connection_mode="localhost_only")
-    r.enable_motors()
-    time.sleep(0.3)
-    return r
+def _goto(head=None, antennas=None, body_yaw=None, duration=0.6):
+    payload = {
+        "duration": duration,
+        "interpolation": "minjerk",
+    }
+    if head is not None:
+        payload["head_pose"] = {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "roll": math.radians(head.get("roll", 0.0)),
+            "pitch": math.radians(head.get("pitch", 0.0)),
+            "yaw": math.radians(head.get("yaw", 0.0)),
+        }
+    if antennas is not None:
+        payload["antennas"] = antennas
+    if body_yaw is not None:
+        payload["body_yaw"] = body_yaw
+    _enable_motors()
+    _daemon_post("/api/move/goto", payload)
+    time.sleep(duration + 0.1)
 
 
 LOOKS = {
@@ -102,8 +114,8 @@ LOOKS = {
 }
 
 BODY_YAWS = {
-    "left": np.deg2rad(35),
-    "right": np.deg2rad(-35),
+    "left": math.radians(35),
+    "right": math.radians(-35),
     "center": 0.0,
 }
 
@@ -112,6 +124,8 @@ ANTENNA_POSITIONS = {
     "down": [-0.6, 0.6],
     "neutral": [0.08, -0.15],
 }
+
+EMOTION_DATASET = "pollen-robotics/reachy-mini-emotions-library"
 
 
 # ----------------------------------------------------------------------------- eyes
@@ -153,21 +167,15 @@ def cmd_status(args):
     except Exception:
         pass
     try:
-        import cv2
-        cap = cv2.VideoCapture(CAM_INDEX, cv2.CAP_AVFOUNDATION)
-        out["camera"] = bool(cap.isOpened())
-        cap.release()
+        specs = json.loads(_daemon_get("/api/camera/specs"))
+        out["camera"] = bool(specs.get("name"))
     except Exception:
         pass
     return _ok(**out)
 
 
 def cmd_wake(args):
-    r = _connect_motion()
-    try:
-        r.wake_up()  # built-in emote (sound skipped in no_media mode)
-    finally:
-        r.__exit__(None, None, None) if hasattr(r, "__exit__") else None
+    _daemon_post("/api/move/play/wake_up")
     return _ok(action="wake")
 
 
@@ -175,61 +183,70 @@ def cmd_look(args):
     direction = args.direction.lower()
     if direction not in LOOKS:
         return _err(f"unknown direction '{direction}' (choose {list(LOOKS)})")
-    r = _connect_motion()
-    r.goto_target(_pose(**LOOKS[direction]), duration=args.duration)
+    _goto(head=LOOKS[direction], duration=args.duration)
     return _ok(action="look", direction=direction)
 
 
 def cmd_body(args):
     direction = args.direction.lower()
-    r = _connect_motion()
-    r.goto_target(body_yaw=BODY_YAWS[direction], duration=args.duration)
+    _goto(body_yaw=BODY_YAWS[direction], duration=args.duration)
     return _ok(action="body", direction=direction)
 
 
 def cmd_antennas(args):
     position = args.position.lower()
-    r = _connect_motion()
-    r.goto_target(antennas=ANTENNA_POSITIONS[position], duration=args.duration)
+    _goto(antennas=ANTENNA_POSITIONS[position], duration=args.duration)
     return _ok(action="antennas", position=position)
 
 
+def cmd_track(args):
+    if args.state == "on":
+        _daemon_post("/api/media/tracking/enable", {"weight": args.weight})
+    else:
+        _daemon_post("/api/media/tracking/disable")
+    return _ok(action="track", state=args.state)
+
+
+def cmd_emotion(args):
+    dataset = urllib.parse.quote(EMOTION_DATASET, safe="")
+    move = urllib.parse.quote(args.name, safe="")
+    _daemon_post(f"/api/move/play/recorded-move-dataset/{dataset}/{move}")
+    return _ok(action="emotion", name=args.name)
+
+
 def cmd_nod(args):
-    r = _connect_motion()
     for _ in range(args.times):
-        r.goto_target(_pose(pitch=15), duration=0.3)
-        r.goto_target(_pose(pitch=-5), duration=0.3)
-    r.goto_target(_pose(), duration=0.3)
+        _goto(head={"pitch": 15}, duration=0.3)
+        _goto(head={"pitch": -5}, duration=0.3)
+    _goto(head={}, duration=0.3)
     return _ok(action="nod", times=args.times)
 
 
 def cmd_shake(args):
-    r = _connect_motion()
     for _ in range(args.times):
-        r.goto_target(_pose(yaw=20), duration=0.25)
-        r.goto_target(_pose(yaw=-20), duration=0.25)
-    r.goto_target(_pose(), duration=0.25)
+        _goto(head={"yaw": 20}, duration=0.25)
+        _goto(head={"yaw": -20}, duration=0.25)
+    _goto(head={}, duration=0.25)
     return _ok(action="shake", times=args.times)
 
 
 def cmd_speak(args):
     text = " ".join(args.text)
     wav, dur = _synthesize(text, args.voice)
-    r = None
-    if args.move:
-        try:
-            r = _connect_motion()
-        except Exception:
-            r = None
     _daemon_post("/api/media/play_sound", {"file": wav})
-    if r is not None:
+    if args.move:
         t0 = time.time()
         i = 0
         while time.time() - t0 < dur:
-            r.goto_target(_pose(pitch=7 if i % 2 == 0 else -3,
-                                yaw=4 if i % 2 == 0 else -4), duration=0.35)
+            _goto(
+                head={
+                    "pitch": 7 if i % 2 == 0 else -3,
+                    "yaw": 4 if i % 2 == 0 else -4,
+                },
+                duration=0.35,
+            )
             i += 1
-        r.goto_target(_pose(), duration=0.4)
+        _goto(head={}, duration=0.4)
     else:
         time.sleep(dur + 0.3)
     return _ok(action="speak", text=text, seconds=round(dur, 1), voice=args.voice)
@@ -315,33 +332,24 @@ def cmd_eyes_idle(args):
 
 
 def cmd_see(args):
-    import cv2
+    from reachy_mini import ReachyMini
+
     out = args.out or os.path.join(tempfile.gettempdir(), "karl_view.jpg")
-    cap = cv2.VideoCapture(CAM_INDEX, cv2.CAP_AVFOUNDATION)
-    if not cap.isOpened():
-        return _err(f"camera index {CAM_INDEX} not available")
-    frame = None
-    try:
-        for _ in range(10):  # warm up / autoexposure settle
-            ok, f = cap.read()
-            if ok and f is not None:
-                frame = f
-            time.sleep(0.05)
-    finally:
-        cap.release()
-    if frame is None:
+    with ReachyMini(
+        media_backend="default", connection_mode="localhost_only"
+    ) as robot:
+        jpeg = robot.media.get_frame_jpeg()
+    if not jpeg:
         return _err("no frame captured")
-    cv2.imwrite(out, frame)
-    h, w = frame.shape[:2]
-    return _ok(action="see", path=out, width=int(w), height=int(h),
-               brightness=round(float(frame.mean()), 1))
+    with open(out, "wb") as image_file:
+        image_file.write(jpeg)
+    return _ok(action="see", path=out, bytes=len(jpeg))
 
 
 def cmd_demo(args):
     cmd_wake(args)
     for d in ("right", "left", "center"):
-        r = _connect_motion()
-        r.goto_target(_pose(**LOOKS[d]), duration=0.6)
+        _goto(head=LOOKS[d], duration=0.6)
     class A: pass
     b = A(); b.color = "random"; b.times = 4
     cmd_blink(b)
@@ -375,6 +383,15 @@ def build_parser():
     pantennas.add_argument("position", choices=list(ANTENNA_POSITIONS))
     pantennas.add_argument("--duration", type=float, default=0.4)
     pantennas.set_defaults(func=cmd_antennas)
+
+    ptracking = sub.add_parser("track", help="Enable or disable face tracking.")
+    ptracking.add_argument("state", choices=["on", "off"])
+    ptracking.add_argument("--weight", type=float, default=0.35)
+    ptracking.set_defaults(func=cmd_track)
+
+    pemotion = sub.add_parser("emotion", help="Play an official recorded emotion.")
+    pemotion.add_argument("name", help="Move name, e.g. cheerful1 or curious1")
+    pemotion.set_defaults(func=cmd_emotion)
 
     pn = sub.add_parser("nod", help="Nod the head (yes).")
     pn.add_argument("times", nargs="?", type=int, default=2)

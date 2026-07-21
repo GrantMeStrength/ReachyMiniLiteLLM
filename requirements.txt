@@ -1,4 +1,4 @@
-reachy-mini
+reachy-mini==1.9.0
 ollama
 pyserial
 pyusb

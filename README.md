@@ -13,10 +13,12 @@ The complete stack is working on Karl, the project's Reachy Mini Lite:
 | Motors and movement | Working | Wake, head pitch/yaw/roll, body rotation, antennas, nod, shake, and demo motions |
 | Microphone | Working | The replacement FPC cable must be installed in the correct orientation |
 | Speaker and speech | Working | macOS `say` and Piper both play through the robot |
-| Camera | Working | OpenCV capture works; `fix_camera.py` corrects the dark macOS image |
+| Camera | Working | Daemon-native JPEG capture works; `fix_camera.py` corrects the dark macOS image |
 | LED eyes | Working | USB startup recovery, color control, blinking, and periodic idle blinking |
-| Offline conversation | Working | Whisper STT, Ollama reasoning, Piper TTS, movement, and eye feedback |
-| macOS controller | Working | Native SwiftUI app for lifecycle, interaction, camera, and diagnostics |
+| Offline conversation | Working | Whisper STT, Ollama reasoning, Piper TTS, movement, eye feedback, and speaker tracking |
+| Face tracking | Working | Official daemon-side YuNet tracker, manual follow mode, and visitor detection |
+| Recorded emotions | Working | Official Reachy emotions dataset available from the CLI and macOS app |
+| macOS controller | Working | Native SwiftUI app using daemon REST for motion and supported SDK media APIs |
 | OpenClaw integration | Working | `karlctl` is exposed through the installed `reachy` skill |
 
 The eye controller can still only be **flashed directly over USB-C**, not
@@ -46,7 +48,8 @@ starting, stopping, diagnosing, and interacting with Robot Karl.
 | **Head** | Look up/down/left/right, center, tilt left/right |
 | **Body** | Rotate left/right and return to center |
 | **Antennas** | Up, down, and neutral positions |
-| **Gestures** | Nod yes, shake no, and full demo |
+| **Tracking** | Start and stop official daemon-side face following |
+| **Gestures** | Nod yes, shake no, full demo, and recorded emotions |
 | **Speech** | Type text for Karl to speak through the robot |
 | **Eyes** | Preset colors, custom color picker, blink now, periodic blinking, and off |
 | **Camera** | Capture and display a still image |
@@ -62,8 +65,9 @@ Then open **Karl Controller.app** from the Desktop. Set `KARL_REPO` before
 launching if the repository is stored somewhere other than
 `/Users/john/Developer/ReachyMiniLiteLLM`.
 
-The first camera check prompts for macOS Camera permission. Select **Allow**
-so status checks and snapshots can access the Reachy camera.
+The Reachy daemon process needs macOS Camera and Microphone permission. Camera
+snapshots are read from its GStreamer media pipeline rather than opening the
+USB camera a second time.
 
 See **[Fully Offline Interactive Karl](#fully-offline-interactive-karl)** for
 what it runs. To set things up manually instead:
@@ -148,6 +152,8 @@ karlctl look up
 karlctl look tilt-right
 karlctl body right
 karlctl antennas up
+karlctl track on
+karlctl emotion curious1
 karlctl nod
 karlctl shake
 karlctl speak "Hello from Karl"
@@ -158,8 +164,10 @@ karlctl see --out /tmp/karl-view.jpg
 karlctl demo
 ```
 
-Movement uses the Reachy SDK's named `roll`, `pitch`, and `yaw` axes, so the
-direction controls match the labels in the macOS app.
+Movement uses the daemon's documented REST API with named `roll`, `pitch`,
+and `yaw` values, so the direction controls match the labels in the macOS
+app. Camera snapshots use Reachy Mini 1.9's `get_frame_jpeg()` API instead
+of competing with the daemon for direct OpenCV camera access.
 
 ## Fully Offline Interactive Karl
 
@@ -211,8 +219,9 @@ Override defaults with environment variables, e.g.
 - **`reachy_listen.py`** — a continuous back-and-forth conversation that
   also tracks the speaker's direction (DoA) and turns toward whoever is
   talking.
-- **`reachy_greet.py`** — watches the camera for a visitor and generates a
-  brief Karl-style greeting when someone arrives.
+- **`reachy_greet.py`** — uses the official daemon face tracker to recognize
+  a visitor, retains low-light motion detection as a fallback, and generates
+  a brief Karl-style greeting.
 
 ### LED eye states
 
@@ -339,7 +348,7 @@ See **[ReachySkills.md](ReachySkills.md)** for the full SDK reference covering m
 ## Requirements
 
 - **Hardware:** Reachy Mini Lite (USB version) — optional: XIAO ESP32-C6 + RGB LEDs for the eyes (see [LED Eyes](#led-eyes))
-- **Software:** Python 3.10+, [Ollama](https://ollama.com) with a model (e.g. `llama3.2`), Swift 6.2+ to build Karl Controller
+- **Software:** Python 3.11+, `reachy-mini==1.9.0`, [Ollama](https://ollama.com) with a model (e.g. `llama3.2`), Swift 6.2+ to build Karl Controller
 - **OS:** macOS on Apple Silicon for the complete tested stack and native controller; the Python control code may also work on Linux
 
 ## Known Limitations
@@ -351,9 +360,9 @@ See **[ReachySkills.md](ReachySkills.md)** for the full SDK reference covering m
 - Karl Controller defaults to this machine's repository, Python environment,
   and daemon paths. `KARL_REPO` overrides the repository path, but fully
   portable dependency discovery is still future work.
-- The installed `karlctl` environment currently reports an SDK/daemon version
-  warning (`1.8.1` client with `1.9.0` daemon). The verified controls work,
-  but matching versions is preferable.
+- The official conversation app has stricter dependency pins than Reachy Mini
+  1.9. Karl's control/daemon environment and conversation-app environment are
+  intentionally kept separate.
 - Camera and microphone access are subject to macOS privacy permissions for
   the process launching the command.
 

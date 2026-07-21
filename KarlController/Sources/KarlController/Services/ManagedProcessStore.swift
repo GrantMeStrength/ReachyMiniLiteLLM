@@ -26,7 +26,7 @@ actor ManagedProcessStore {
         let executable: URL
         let arguments: [String]
         if mode == .greeter {
-            executable = URL(fileURLWithPath: "/Users/john/reachy_mini_env/bin/python")
+            executable = URL(fileURLWithPath: "/Users/john/venv/bin/python")
             arguments = ["-u", repositoryURL.appending(path: "reachy_greet.py").path]
         } else {
             executable = repositoryURL.appending(path: "start_karl.sh")

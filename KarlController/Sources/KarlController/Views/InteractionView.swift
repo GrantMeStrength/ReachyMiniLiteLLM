@@ -110,6 +110,18 @@ struct InteractionView: View {
                     }
                 }
 
+                LabeledContent("Face Tracking") {
+                    if controller.isFaceTracking {
+                        Button("Stop Following", systemImage: "person.crop.circle.badge.xmark") {
+                            controller.setFaceTracking(false)
+                        }
+                    } else {
+                        Button("Follow Face", systemImage: "person.crop.circle.badge.checkmark") {
+                            controller.setFaceTracking(true)
+                        }
+                    }
+                }
+
                 LabeledContent("Gestures") {
                     HStack {
                         Button("Nod Yes", systemImage: "checkmark") {
@@ -120,6 +132,26 @@ struct InteractionView: View {
                         }
                         Button("Run Demo", systemImage: "sparkles") {
                             controller.demo()
+                        }
+                    }
+                }
+
+                LabeledContent("Emotions") {
+                    HStack {
+                        Button("Cheerful", systemImage: "face.smiling") {
+                            controller.playEmotion("cheerful1", title: "Cheerful")
+                        }
+                        Button("Curious", systemImage: "questionmark") {
+                            controller.playEmotion("curious1", title: "Curious")
+                        }
+                        Button("Laugh", systemImage: "theatermasks") {
+                            controller.playEmotion("laughing1", title: "Laughing")
+                        }
+                        Button("Proud", systemImage: "medal") {
+                            controller.playEmotion("proud1", title: "Proud")
+                        }
+                        Button("Dance", systemImage: "music.note") {
+                            controller.playEmotion("dance1", title: "Dance")
                         }
                     }
                 }

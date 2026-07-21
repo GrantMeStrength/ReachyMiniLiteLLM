@@ -7,10 +7,12 @@ import SwiftUI
 final class RobotController {
     private let runner = CommandRunner()
     private let processes = ManagedProcessStore()
+    private let daemon = DaemonClient()
 
     private(set) var status = RobotStatus()
     private(set) var activeMode: RobotMode?
     private(set) var isIdleBlinking = false
+    private(set) var isFaceTracking = false
     private(set) var isBusy = false
     private(set) var activity = "Ready"
     private(set) var diagnosticOutput = "Run diagnostics to inspect Karl’s services and hardware."
@@ -65,6 +67,8 @@ final class RobotController {
         perform("Stopping Karl") {
             await self.processes.stopMode()
             await self.processes.stopIdleEyes()
+            try? await self.daemon.setFaceTracking(enabled: false)
+            self.isFaceTracking = false
             try await self.stopRobotProcesses()
             try? await Task.sleep(for: .seconds(1))
             await self.loadStatus()
@@ -95,27 +99,111 @@ final class RobotController {
     }
 
     func wake() {
-        runKarlctl(["wake"], activity: "Waking Karl")
+        perform("Waking Karl") {
+            try await self.daemon.wake()
+            self.activity = "Wake motion started"
+        }
     }
 
     func look(_ direction: String) {
-        runKarlctl(["look", direction], activity: "Looking \(direction)")
+        let poses: [String: HeadPose] = [
+            "left": HeadPose(yaw: Self.radians(25)),
+            "right": HeadPose(yaw: Self.radians(-25)),
+            "up": HeadPose(pitch: Self.radians(-20)),
+            "down": HeadPose(pitch: Self.radians(20)),
+            "tilt-left": HeadPose(roll: Self.radians(18)),
+            "tilt-right": HeadPose(roll: Self.radians(-18)),
+            "center": HeadPose()
+        ]
+        guard let pose = poses[direction] else {
+            errorMessage = "Unknown head direction: \(direction)"
+            return
+        }
+        perform("Looking \(direction)") {
+            try await self.daemon.goto(head: pose)
+            self.activity = "Head moved \(direction)"
+        }
     }
 
     func rotateBody(_ direction: String) {
-        runKarlctl(["body", direction], activity: "Turning body \(direction)")
+        let yaws = [
+            "left": Self.radians(35),
+            "right": Self.radians(-35),
+            "center": 0.0
+        ]
+        guard let yaw = yaws[direction] else {
+            errorMessage = "Unknown body direction: \(direction)"
+            return
+        }
+        perform("Turning body \(direction)") {
+            try await self.daemon.goto(bodyYaw: yaw, duration: 0.7)
+            self.activity = "Body moved \(direction)"
+        }
     }
 
     func positionAntennas(_ position: String) {
-        runKarlctl(["antennas", position], activity: "Moving antennas \(position)")
+        let positions = [
+            "up": [0.6, -0.6],
+            "down": [-0.6, 0.6],
+            "neutral": [0.08, -0.15]
+        ]
+        guard let antennas = positions[position] else {
+            errorMessage = "Unknown antenna position: \(position)"
+            return
+        }
+        perform("Moving antennas \(position)") {
+            try await self.daemon.goto(antennas: antennas, duration: 0.4)
+            self.activity = "Antennas moved \(position)"
+        }
+    }
+
+    func setFaceTracking(_ enabled: Bool) {
+        perform(enabled ? "Starting face tracking" : "Stopping face tracking") {
+            try await self.daemon.setFaceTracking(enabled: enabled)
+            self.isFaceTracking = enabled
+            self.activity = enabled ? "Karl is following faces" : "Face tracking stopped"
+        }
+    }
+
+    func playEmotion(_ name: String, title: String) {
+        perform("Playing \(title)") {
+            try await self.daemon.playEmotion(name)
+            self.activity = "\(title) emotion started"
+        }
     }
 
     func nod() {
-        runKarlctl(["nod"], activity: "Nodding")
+        perform("Nodding") {
+            for _ in 0..<2 {
+                try await self.daemon.goto(
+                    head: HeadPose(pitch: Self.radians(15)),
+                    duration: 0.3
+                )
+                try await self.daemon.goto(
+                    head: HeadPose(pitch: Self.radians(-5)),
+                    duration: 0.3
+                )
+            }
+            try await self.daemon.goto(head: HeadPose(), duration: 0.3)
+            self.activity = "Nod complete"
+        }
     }
 
     func shake() {
-        runKarlctl(["shake"], activity: "Shaking head")
+        perform("Shaking head") {
+            for _ in 0..<2 {
+                try await self.daemon.goto(
+                    head: HeadPose(yaw: Self.radians(20)),
+                    duration: 0.25
+                )
+                try await self.daemon.goto(
+                    head: HeadPose(yaw: Self.radians(-20)),
+                    duration: 0.25
+                )
+            }
+            try await self.daemon.goto(head: HeadPose(), duration: 0.25)
+            self.activity = "Head shake complete"
+        }
     }
 
     func demo() {
@@ -345,6 +433,10 @@ final class RobotController {
             arguments: ["-n", "40", url.path]
         )
         return result.combinedOutput.isEmpty ? "Log is empty." : result.combinedOutput
+    }
+
+    nonisolated private static func radians(_ degrees: Double) -> Double {
+        degrees * .pi / 180
     }
 }
 
