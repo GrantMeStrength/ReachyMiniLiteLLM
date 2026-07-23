@@ -30,6 +30,7 @@ MOTION_THRESHOLD = 5.0  # mean pixel diff to count as motion
 MOTION_FRAMES = 3       # consecutive motion frames before greeting
 FACE_FRAMES = 2         # consecutive face observations before greeting
 TRACKING_WEIGHT = 0.35  # gently follow visitors without dominating motion
+ANTENNA_NEUTRAL = [0.08, -0.15]  # avoid gearbox wobble at exactly zero
 
 from robot_karl_prompt import ROBOT_KARL_PROMPT
 
@@ -74,7 +75,7 @@ def animate_while_speaking(mini: ReachyMini, duration: float):
         )
         i += 1
     mini.goto_target(
-        head=create_head_pose(), antennas=[0, 0], body_yaw=0.0,
+        head=create_head_pose(), antennas=ANTENNA_NEUTRAL, body_yaw=0.0,
         duration=0.6, method="minjerk",
     )
 

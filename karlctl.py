@@ -97,8 +97,7 @@ def _goto(head=None, antennas=None, body_yaw=None, duration=0.6):
             "pitch": math.radians(head.get("pitch", 0.0)),
             "yaw": math.radians(head.get("yaw", 0.0)),
         }
-    if antennas is not None:
-        payload["antennas"] = antennas
+    payload["antennas"] = antennas if antennas is not None else ANTENNA_NEUTRAL
     if body_yaw is not None:
         payload["body_yaw"] = body_yaw
     _enable_motors()
@@ -124,6 +123,7 @@ ANTENNA_POSITIONS = {
     "down": [-0.6, 0.6],
     "neutral": [0.08, -0.15],
 }
+ANTENNA_NEUTRAL = ANTENNA_POSITIONS["neutral"]
 
 EMOTION_DATASET = "pollen-robotics/reachy-mini-emotions-library"
 

@@ -101,7 +101,7 @@ struct InteractionView: View {
                         Button("Up", systemImage: "chevron.up.2") {
                             controller.positionAntennas("up")
                         }
-                        Button("Neutral", systemImage: "minus") {
+                        Button("Safe Rest", systemImage: "minus") {
                             controller.positionAntennas("neutral")
                         }
                         Button("Down", systemImage: "chevron.down.2") {

@@ -47,7 +47,7 @@ starting, stopping, diagnosing, and interacting with Robot Karl.
 | **Interactive modes** | Wake-word assistant, continuous conversation, and visitor greeter |
 | **Head** | Look up/down/left/right, center, tilt left/right |
 | **Body** | Rotate left/right and return to center |
-| **Antennas** | Up, down, and neutral positions |
+| **Antennas** | Up, down, and wobble-safe rest positions; motions automatically avoid exact zero |
 | **Tracking** | Start and stop official daemon-side face following |
 | **Gestures** | Nod yes, shake no, full demo, and recorded emotions |
 | **Speech** | Type text for Karl to speak through the robot |

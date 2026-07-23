@@ -30,10 +30,14 @@ private nonisolated struct TrackingRequest: Encodable, Sendable {
 }
 
 actor DaemonClient {
+    nonisolated static let safeAntennaRest = [0.08, -0.15]
+
     private let baseURL = URL(string: "http://127.0.0.1:8000")
 
     func wake() async throws {
         try await post(path: "/api/move/play/wake_up")
+        try await waitForMoves()
+        try await settleAntennas()
     }
 
     func goto(
@@ -45,7 +49,7 @@ actor DaemonClient {
         try await post(path: "/api/motors/set_mode/enabled")
         let request = GotoRequest(
             headPose: head,
-            antennas: antennas,
+            antennas: antennas ?? Self.safeAntennaRest,
             bodyYaw: bodyYaw,
             duration: duration
         )
@@ -55,6 +59,7 @@ actor DaemonClient {
 
     func setFaceTracking(enabled: Bool, weight: Double = 0.35) async throws {
         if enabled {
+            try await settleAntennas()
             try await post(
                 path: "/api/media/tracking/enable",
                 body: TrackingRequest(weight: weight)
@@ -74,6 +79,12 @@ actor DaemonClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         try await send(request)
+        try await waitForMoves(timeout: 30)
+        try await settleAntennas()
+    }
+
+    func settleAntennas() async throws {
+        try await goto(antennas: Self.safeAntennaRest, duration: 0.35)
     }
 
     private func post(path: String) async throws {
@@ -108,11 +119,34 @@ actor DaemonClient {
             )
         }
     }
+
+    private func waitForMoves(timeout: TimeInterval = 15) async throws {
+        let deadline = Date.now.addingTimeInterval(timeout)
+        while Date.now < deadline {
+            guard let url = baseURL?.appending(path: "/api/move/running") else {
+                throw DaemonClientError.invalidURL("/api/move/running")
+            }
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let response = response as? HTTPURLResponse,
+                  (200..<300).contains(response.statusCode) else {
+                throw DaemonClientError.requestFailed(
+                    (response as? HTTPURLResponse)?.statusCode
+                )
+            }
+            if let moves = try JSONSerialization.jsonObject(with: data) as? [Any],
+               moves.isEmpty {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        throw DaemonClientError.moveTimedOut
+    }
 }
 
 nonisolated enum DaemonClientError: LocalizedError {
     case invalidURL(String)
     case requestFailed(Int?)
+    case moveTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -124,6 +158,8 @@ nonisolated enum DaemonClientError: LocalizedError {
             } else {
                 "The Reachy daemon did not return an HTTP response."
             }
+        case .moveTimedOut:
+            "The Reachy movement did not finish before the safety timeout."
         }
     }
 }

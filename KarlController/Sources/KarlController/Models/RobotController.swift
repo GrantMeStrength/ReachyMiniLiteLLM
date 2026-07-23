@@ -59,6 +59,7 @@ final class RobotController {
         perform("Starting Karl") {
             try await self.ensureDaemonRunning()
             try? await Task.sleep(for: .seconds(5))
+            try await self.daemon.settleAntennas()
             await self.loadStatus()
         }
     }
@@ -93,6 +94,7 @@ final class RobotController {
     func stopMode() {
         perform("Stopping interactive mode") {
             await self.processes.stopMode()
+            try await self.daemon.settleAntennas()
             self.activeMode = nil
             self.activity = "Interactive mode stopped"
         }
@@ -145,7 +147,7 @@ final class RobotController {
         let positions = [
             "up": [0.6, -0.6],
             "down": [-0.6, 0.6],
-            "neutral": [0.08, -0.15]
+            "neutral": DaemonClient.safeAntennaRest
         ]
         guard let antennas = positions[position] else {
             errorMessage = "Unknown antenna position: \(position)"
