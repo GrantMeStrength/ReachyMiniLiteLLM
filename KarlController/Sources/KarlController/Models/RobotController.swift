@@ -29,6 +29,10 @@ final class RobotController {
         URL(fileURLWithPath: "/Users/john/venv/bin/reachy-mini-daemon")
     }
 
+    private var controlPythonURL: URL {
+        URL(fileURLWithPath: "/Users/john/venv/bin/python")
+    }
+
     private var daemonLogURL: URL {
         URL(fileURLWithPath: "/tmp/karl-controller-daemon.log")
     }
@@ -365,6 +369,14 @@ final class RobotController {
     }
 
     private func ensureDaemonRunning() async throws {
+        let patchResult = try await runner.run(
+            executable: controlPythonURL,
+            arguments: [repositoryURL.appending(path: "fix_face_tracking.py").path],
+            currentDirectory: repositoryURL
+        )
+        guard patchResult.exitCode == 0 else {
+            throw ControllerError.commandFailed(patchResult.combinedOutput)
+        }
         await loadStatus()
         guard !status.daemon else { return }
         guard FileManager.default.isExecutableFile(atPath: daemonURL.path) else {

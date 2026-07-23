@@ -16,7 +16,7 @@ The complete stack is working on Karl, the project's Reachy Mini Lite:
 | Camera | Working | Daemon-native JPEG capture works; `fix_camera.py` corrects the dark macOS image |
 | LED eyes | Working | USB startup recovery, color control, blinking, and periodic idle blinking |
 | Offline conversation | Working | Whisper STT, Ollama reasoning, Piper TTS, movement, eye feedback, and speaker tracking |
-| Face tracking | Working | Official daemon-side YuNet tracker, manual follow mode, and visitor detection |
+| Face tracking | Working | Official daemon-side YuNet tracker with automatic macOS GStreamer fallback, manual follow mode, and visitor detection |
 | Recorded emotions | Working | Official Reachy emotions dataset available from the CLI and macOS app |
 | macOS controller | Working | Native SwiftUI app using daemon REST for motion and supported SDK media APIs |
 | OpenClaw integration | Working | `karlctl` is exposed through the installed `reachy` skill |
@@ -363,6 +363,9 @@ See **[ReachySkills.md](ReachySkills.md)** for the full SDK reference covering m
 - The official conversation app has stricter dependency pins than Reachy Mini
   1.9. Karl's control/daemon environment and conversation-app environment are
   intentionally kept separate.
+- Reachy Mini 1.9 probes the Linux-only `v4l2convert` plugin when face tracking
+  starts. `fix_face_tracking.py` applies the intended macOS
+  `videoscale`/`videoconvert` fallback automatically before daemon startup.
 - Camera and microphone access are subject to macOS privacy permissions for
   the process launching the command.
 
