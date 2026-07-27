@@ -39,7 +39,7 @@ OLLAMA_MODEL = "llama3.2"
 VOICE_MODEL = "piper_models/en_GB-northern_english_male-medium.onnx"
 PITCH_SHIFT = 0.95
 ROBOT_SAMPLE_RATE = 16000
-ANTENNA_NEUTRAL = [0.08, -0.15]
+ANTENNA_NEUTRAL = [0.15, -0.25]  # verified outside Karl's backlash zone
 
 # Wake word detection
 WAKE_PHRASES = ["hey karl", "hey carl", "hey carol", "a]karl", "ok karl", "okay karl"]

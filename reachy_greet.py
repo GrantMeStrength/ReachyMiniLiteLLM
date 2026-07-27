@@ -30,7 +30,7 @@ MOTION_THRESHOLD = 5.0  # mean pixel diff to count as motion
 MOTION_FRAMES = 3       # consecutive motion frames before greeting
 FACE_FRAMES = 2         # consecutive face observations before greeting
 TRACKING_WEIGHT = 0.35  # gently follow visitors without dominating motion
-ANTENNA_NEUTRAL = [0.08, -0.15]  # avoid gearbox wobble at exactly zero
+ANTENNA_NEUTRAL = [0.15, -0.25]  # verified outside Karl's backlash zone
 
 from robot_karl_prompt import ROBOT_KARL_PROMPT
 

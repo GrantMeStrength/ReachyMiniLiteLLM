@@ -30,7 +30,7 @@ private nonisolated struct TrackingRequest: Encodable, Sendable {
 }
 
 actor DaemonClient {
-    nonisolated static let safeAntennaRest = [0.08, -0.15]
+    nonisolated static let safeAntennaRest = [0.15, -0.25]
 
     private let baseURL = URL(string: "http://127.0.0.1:8000")
 

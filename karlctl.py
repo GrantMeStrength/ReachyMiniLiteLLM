@@ -121,7 +121,7 @@ BODY_YAWS = {
 ANTENNA_POSITIONS = {
     "up": [0.6, -0.6],
     "down": [-0.6, 0.6],
-    "neutral": [0.08, -0.15],
+    "neutral": [0.15, -0.25],
 }
 ANTENNA_NEUTRAL = ANTENNA_POSITIONS["neutral"]
 
