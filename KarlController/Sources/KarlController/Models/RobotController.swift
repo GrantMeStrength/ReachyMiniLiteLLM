@@ -301,6 +301,7 @@ final class RobotController {
                         || $0.localizedStandardContains("reachy_wake.py")
                         || $0.localizedStandardContains("reachy_listen.py")
                         || $0.localizedStandardContains("reachy_greet.py")
+                        || $0.localizedStandardContains("reachy_gpp.py")
                 }
                 .joined(separator: "\n")
             let deviceNames = try? FileManager.default.contentsOfDirectory(atPath: "/dev")
@@ -423,7 +424,8 @@ final class RobotController {
             daemonURL.path,
             repositoryURL.appending(path: "reachy_wake.py").path,
             repositoryURL.appending(path: "reachy_listen.py").path,
-            repositoryURL.appending(path: "reachy_greet.py").path
+            repositoryURL.appending(path: "reachy_greet.py").path,
+            repositoryURL.appending(path: "reachy_gpp.py").path
         ]
         let pids = result.output.split(separator: "\n").compactMap { line -> String? in
             guard processMarkers.contains(where: { line.contains($0) }) else { return nil }

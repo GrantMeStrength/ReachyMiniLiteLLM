@@ -25,9 +25,10 @@ actor ManagedProcessStore {
 
         let executable: URL
         let arguments: [String]
-        if mode == .greeter {
+        if mode == .greeter || mode == .gpp {
             executable = URL(fileURLWithPath: "/Users/john/venv/bin/python")
-            arguments = ["-u", repositoryURL.appending(path: "reachy_greet.py").path]
+            let script = mode == .gpp ? "reachy_gpp.py" : "reachy_greet.py"
+            arguments = ["-u", repositoryURL.appending(path: script).path]
         } else {
             executable = repositoryURL.appending(path: "start_karl.sh")
             arguments = mode.scriptArguments

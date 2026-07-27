@@ -17,6 +17,7 @@ The complete stack is working on Karl, the project's Reachy Mini Lite:
 | LED eyes | Working | USB startup recovery, color control, blinking, and periodic idle blinking |
 | Offline conversation | Working | Whisper STT, Ollama reasoning, Piper TTS, movement, eye feedback, and speaker tracking |
 | Face tracking | Working | Official daemon-side YuNet tracker with automatic macOS GStreamer fallback, manual follow mode, and visitor detection |
+| GPP mode | Working | Genuine People Personality follows faces, blinks while awake, naps in an empty room, and makes rare local remarks |
 | Recorded emotions | Working | Official Reachy emotions dataset available from the CLI and macOS app |
 | macOS controller | Working | Native SwiftUI app using daemon REST for motion and supported SDK media APIs |
 | OpenClaw integration | Working | `karlctl` is exposed through the installed `reachy` skill |
@@ -44,7 +45,7 @@ starting, stopping, diagnosing, and interacting with Robot Karl.
 | Area | Features |
 |------|----------|
 | **Overview** | Daemon, LED-eye, and camera status; start/stop robot; wake motion |
-| **Interactive modes** | Wake-word assistant, continuous conversation, and visitor greeter |
+| **Interactive modes** | Wake-word assistant, continuous conversation, visitor greeter, and GPP |
 | **Head** | Look up/down/left/right, center, tilt left/right |
 | **Body** | Rotate left/right and return to center |
 | **Antennas** | Up, down, and Karl-tested `[0.15, -0.25]` rest position outside the gearbox backlash zone |
@@ -64,6 +65,15 @@ Build the app and install it on the Desktop:
 Then open **Karl Controller.app** from the Desktop. Set `KARL_REPO` before
 launching if the repository is stored somewhere other than
 `/Users/john/Developer/ReachyMiniLiteLLM`.
+
+**GPP** is Karl's “Genuine People Personality” mode. It keeps face following
+and natural eye blinking active while someone is present. After 45 seconds
+without seeing a face, Karl lowers his head and turns his eyes off. Because
+the camera points down while he sleeps, he briefly raises his head every 15
+seconds to look for returning company; two successive face detections wake
+him. After someone has remained in the room for a while, GPP has a deliberately
+small chance of making a dry comment about the local time or weather. These
+remarks use no cloud or location API.
 
 The Reachy daemon process needs macOS Camera and Microphone permission. Camera
 snapshots are read from its GStreamer media pipeline rather than opening the

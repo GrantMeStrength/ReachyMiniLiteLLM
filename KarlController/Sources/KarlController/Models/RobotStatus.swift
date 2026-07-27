@@ -14,6 +14,7 @@ enum RobotMode: String, CaseIterable, Identifiable, Sendable {
     case wakeWord
     case continuous
     case greeter
+    case gpp
 
     var id: Self { self }
 
@@ -22,6 +23,7 @@ enum RobotMode: String, CaseIterable, Identifiable, Sendable {
         case .wakeWord: "Wake Word"
         case .continuous: "Conversation"
         case .greeter: "Visitor Greeter"
+        case .gpp: "GPP"
         }
     }
 
@@ -30,6 +32,7 @@ enum RobotMode: String, CaseIterable, Identifiable, Sendable {
         case .wakeWord: "Wait for “Hey Karl”"
         case .continuous: "Always listen and respond"
         case .greeter: "Greet people seen by the camera"
+        case .gpp: "Genuine People Personality"
         }
     }
 
@@ -38,6 +41,7 @@ enum RobotMode: String, CaseIterable, Identifiable, Sendable {
         case .wakeWord: "waveform.badge.mic"
         case .continuous: "bubble.left.and.bubble.right"
         case .greeter: "person.crop.rectangle"
+        case .gpp: "sparkles"
         }
     }
 
@@ -45,7 +49,7 @@ enum RobotMode: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .wakeWord: ["wake"]
         case .continuous: ["listen"]
-        case .greeter: []
+        case .greeter, .gpp: []
         }
     }
 }
