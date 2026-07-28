@@ -71,7 +71,10 @@ and natural eye blinking active while someone is present. After 45 seconds
 without seeing a face, Karl lowers his head and turns his eyes off. Because
 the camera points down while he sleeps, he briefly raises his head every 15
 seconds to look for returning company; two successive face detections wake
-him. After someone has remained in the room for a while, GPP has a deliberately
+him. This daytime nap is separate from overnight sleep: at 10:00 PM local time
+Karl lowers his head, turns his eyes off, disables face tracking, and performs
+no presence checks. At 7:00 AM local time he wakes automatically and resumes
+GPP. After someone has remained in the room for a while, GPP has a deliberately
 small chance of making a dry comment about the local time or weather. These
 remarks use no cloud or location API.
 

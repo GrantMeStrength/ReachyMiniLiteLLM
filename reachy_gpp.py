@@ -2,7 +2,8 @@
 
 GPP follows faces and blinks while someone is present. After a sustained
 absence it lowers Karl's head and turns the eyes off, then wakes when a face
-returns. Rare local remarks add personality without becoming distracting.
+returns. From 10 PM until 7 AM it sleeps without checking for people. Rare
+local remarks add personality without becoming distracting.
 """
 
 from __future__ import annotations
@@ -34,18 +35,24 @@ COMMENT_AFTER_SECONDS = 90
 COMMENT_CHECK_INTERVAL = 60
 COMMENT_CHANCE = 0.025
 COMMENT_COOLDOWN_SECONDS = 3 * 60 * 60
+BEDTIME_HOUR = 22
+WAKE_HOUR = 7
 
 
 class EyeBlinker:
     """Own one eye-controller connection and blink only while Karl is awake."""
 
     def __init__(self) -> None:
-        self.serial = reachy_leds.connect()
+        self.serial = None
         self.stop_event: threading.Event | None = None
         self.thread: threading.Thread | None = None
 
     def start(self) -> None:
-        if self.serial is None or self.thread is not None:
+        if self.thread is not None:
+            return
+        if self.serial is None:
+            self.serial = reachy_leds.connect()
+        if self.serial is None:
             return
         self.stop_event = threading.Event()
         self.thread = threading.Thread(
@@ -97,6 +104,11 @@ def disable_tracking() -> None:
 def face_detected() -> bool:
     response = daemon_request("/api/media/tracking/face")
     return bool(response.get("face_target", {}).get("detected"))
+
+
+def is_overnight(now: datetime.datetime | None = None) -> bool:
+    local_now = now or datetime.datetime.now().astimezone()
+    return local_now.hour >= BEDTIME_HOUR or local_now.hour < WAKE_HOUR
 
 
 def move_to_nap() -> None:
@@ -204,7 +216,8 @@ def main() -> None:
     signal.signal(signal.SIGTERM, request_stop)
 
     eyes = EyeBlinker()
-    awake = True
+    overnight = is_overnight()
+    awake = not overnight
     face_confirmations = 0
     last_seen = time.monotonic()
     person_present_since: float | None = None
@@ -212,13 +225,39 @@ def main() -> None:
     next_comment_check = last_comment + COMMENT_CHECK_INTERVAL
     next_nap_peek = last_comment
 
-    print("GPP active: following faces, blinking, and watching for company.", flush=True)
-    enable_tracking()
-    eyes.start()
+    if overnight:
+        print("GPP active during overnight hours; sleeping until 7:00 AM.", flush=True)
+        move_to_nap()
+    else:
+        print("GPP active: following faces, blinking, and watching for company.", flush=True)
+        enable_tracking()
+        eyes.start()
 
     try:
         while not stopping.wait(POLL_INTERVAL):
             now = time.monotonic()
+            should_be_overnight = is_overnight()
+
+            if should_be_overnight:
+                if not overnight:
+                    print("GPP bedtime reached; sleeping until 7:00 AM.", flush=True)
+                    eyes.stop()
+                    move_to_nap()
+                    overnight = True
+                    awake = False
+                    person_present_since = None
+                continue
+
+            if overnight:
+                print("GPP morning reached; waking for the day.", flush=True)
+                wake()
+                eyes.start()
+                overnight = False
+                awake = True
+                last_seen = time.monotonic()
+                person_present_since = None
+                next_comment_check = last_seen + COMMENT_CHECK_INTERVAL
+                continue
 
             if not awake:
                 if now < next_nap_peek:
