@@ -53,7 +53,7 @@ starting, stopping, diagnosing, and interacting with Robot Karl.
 | **Gestures** | Nod yes, shake no, full demo, and recorded emotions |
 | **Speech** | Type text for Karl to speak through the robot |
 | **Eyes** | Preset colors, custom color picker, blink now, periodic blinking, and off |
-| **Camera** | Capture and display a still image |
+| **Camera** | Reapply the macOS brightness workaround, then capture and display a still image |
 | **Diagnostics** | Robot status, serial ports, running processes, daemon log, and mode log |
 
 Build the app and install it on the Desktop:
@@ -153,7 +153,7 @@ curl http://localhost:9000/history
 | `reachy_dashboard.py` | Local-only webhook server for announcements, status, history, and camera | No |
 | `karlctl.py` / `karlctl` | Unified command-line control for status, motion, speech, eyes, camera, and demos | No |
 | `fix_camera.py` | Fix dark camera image on macOS (UVC power-line-frequency) | No |
-| `reachy_leds.py` | Function-based LED eye control (auto-detects the ESP32 port) | No |
+| `reachy_leds.py` | Shared LED-eye control with safe ownership, recovery, status heartbeat, and GPP blink requests | No |
 | `reachy_eyes.py` | `RobotEyes` driver class — auto-detects port, state presets, pulse animation | No |
 
 ## Unified `karlctl` CLI

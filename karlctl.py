@@ -290,6 +290,14 @@ def cmd_blink(args):
     import reachy_leds
     ser = reachy_leds.connect()
     if ser is None:
+        if reachy_leds.is_in_use() and reachy_leds.has_recent_heartbeat():
+            reachy_leds.request_blink(args.color, args.times)
+            return _ok(
+                action="blink",
+                times=args.times,
+                color=args.color,
+                state="queued",
+            )
         return _err("eyes not detected")
     try:
         for _ in range(args.times):
@@ -339,6 +347,22 @@ def cmd_eyes_idle(args):
 def cmd_see(args):
     from reachy_mini import ReachyMini
 
+    try:
+        camera_fix = subprocess.run(
+            [sys.executable, os.path.join(HERE, "fix_camera.py")],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        print(f"WARNING camera brightness fix skipped: {error}", file=sys.stderr)
+    else:
+        if camera_fix.returncode != 0:
+            print(
+                f"WARNING camera brightness fix skipped: "
+                f"{camera_fix.stderr.strip() or camera_fix.stdout.strip()}",
+                file=sys.stderr,
+            )
     out = args.out or os.path.join(tempfile.gettempdir(), "karl_view.jpg")
     with ReachyMini(
         media_backend="default", connection_mode="localhost_only"

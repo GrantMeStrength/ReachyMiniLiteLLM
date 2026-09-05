@@ -96,6 +96,33 @@ class EyeBlinker:
     def close(self) -> None:
         self.stop()
 
+    def blink_now(self, color: str, times: int) -> None:
+        self.stop()
+        connection = reachy_leds.connect()
+        if connection is None:
+            print("GPP could not reconnect to blink the eyes.", flush=True)
+            return
+        try:
+            for _ in range(times):
+                if color == "random":
+                    left = [random.randint(0, 255) for _ in range(3)]
+                    right = [random.randint(0, 255) for _ in range(3)]
+                else:
+                    left = right = [
+                        max(0, min(255, int(value)))
+                        for value in color.split(",")
+                    ]
+                    if len(left) != 3:
+                        raise ValueError("Blink color must have three channels.")
+                reachy_leds.set_left(connection, *left)
+                reachy_leds.set_right(connection, *right)
+                time.sleep(0.22)
+                reachy_leds.off(connection)
+                time.sleep(0.18)
+        finally:
+            connection.close()
+            self.start()
+
 
 def daemon_request(path: str, body: dict | None = None) -> dict:
     data = json.dumps(body).encode() if body is not None else None
@@ -274,6 +301,16 @@ def main() -> None:
                 person_present_since = None
                 next_comment_check = last_seen + COMMENT_CHECK_INTERVAL
                 continue
+
+            blink_request = reachy_leds.take_blink_request() if awake else None
+            if blink_request is not None:
+                try:
+                    eyes.blink_now(
+                        str(blink_request.get("color", "random")),
+                        max(1, int(blink_request.get("times", 1))),
+                    )
+                except (OSError, serial.SerialException, ValueError) as error:
+                    print(f"GPP blink request failed: {error}", flush=True)
 
             if not awake:
                 if now < next_nap_peek:

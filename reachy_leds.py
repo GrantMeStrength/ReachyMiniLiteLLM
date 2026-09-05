@@ -6,6 +6,7 @@ Commands: OFF, L0:r,g,b, L1:r,g,b  (values 0-255)
 
 import os
 import fcntl
+import json
 import serial
 import serial.tools.list_ports
 import threading
@@ -18,6 +19,7 @@ ESPRESSIF_VID = 0x303A
 ESP32_USB_JTAG_PID = 0x1001
 EYE_LOCK_PATH = "/tmp/karl-eyes.lock"
 EYE_HEARTBEAT_PATH = "/tmp/karl-eyes.heartbeat"
+EYE_BLINK_REQUEST_PATH = "/tmp/karl-eyes-blink.json"
 
 
 class LockedSerial:
@@ -82,6 +84,31 @@ def has_recent_heartbeat(max_age=10.0):
 def _record_heartbeat():
     with open(EYE_HEARTBEAT_PATH, "a"):
         os.utime(EYE_HEARTBEAT_PATH)
+
+
+def request_blink(color, times):
+    """Queue a blink for the process that currently owns the eye controller."""
+    request_path = f"{EYE_BLINK_REQUEST_PATH}.{os.getpid()}"
+    with open(request_path, "w") as request_file:
+        json.dump({"color": color, "times": times}, request_file)
+    os.replace(request_path, EYE_BLINK_REQUEST_PATH)
+
+
+def take_blink_request():
+    """Atomically consume a queued blink request, if present."""
+    claimed_path = f"{EYE_BLINK_REQUEST_PATH}.processing.{os.getpid()}"
+    try:
+        os.replace(EYE_BLINK_REQUEST_PATH, claimed_path)
+        with open(claimed_path) as request_file:
+            request = json.load(request_file)
+        return request
+    except FileNotFoundError:
+        return None
+    finally:
+        try:
+            os.remove(claimed_path)
+        except FileNotFoundError:
+            pass
 
 
 def _reset_usb_device(serial_number):
