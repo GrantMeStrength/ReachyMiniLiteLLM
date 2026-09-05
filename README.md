@@ -26,8 +26,9 @@ The complete stack is working on Karl, the project's Reachy Mini Lite:
 | macOS controller | Working | Native SwiftUI app using daemon REST for motion and supported SDK media APIs |
 | OpenClaw integration | Working | `karlctl` is exposed through the installed `reachy` skill |
 
-The eye controller can still only be **flashed directly over USB-C**, not
-through the robot's internal USB hub. See [Known Limitations](#known-limitations).
+On Karl's current build, eye firmware flashing has only worked over a
+**direct USB-C connection**; normal eye control works through the robot's
+internal USB hub. See [Known Limitations](#known-limitations).
 
 ## Quick Start
 
@@ -311,9 +312,10 @@ any en_GB voice (e.g. `Reed`, `Sandy`, `Shelley`) works via `-v`.
 > its serial control lines. They also auto-detect the changing `/dev/cu.*`
 > device path.
 >
-> The XIAO still **can't be flashed through the internal USB hub** (esptool
-> reports "No serial data received"). Flash it directly over USB-C before
-> installing it inside the head.
+> On Karl's tested setup, flashing the XIAO through the internal USB hub
+> fails because esptool reports "No serial data received." Use a direct USB-C
+> connection for firmware updates. Runtime serial eye control through the
+> internal hub works normally.
 >
 > All speech/animation scripts treat the eyes as optional and run fine
 > without them.
@@ -392,8 +394,10 @@ intentionally required.
 
 ## Known Limitations
 
-- The XIAO ESP32-C6 eye board cannot be flashed through the Reachy Mini's
-  internal USB hub. Flash it directly over USB-C before installation.
+- On Karl's current setup, flashing the XIAO ESP32-C6 through the Reachy
+  Mini's internal USB hub fails with "No serial data received." Firmware
+  updates require a direct USB-C connection, while runtime serial control
+  works through the hub.
 - The committed macOS app is source code, not a signed/notarized release.
   `build_app.sh` creates an ad-hoc signed local build.
 - Karl Controller defaults to this machine's repository, Python environment,
