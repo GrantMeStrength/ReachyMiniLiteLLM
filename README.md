@@ -4,6 +4,10 @@ Control a [Reachy Mini Lite](https://www.pollen-robotics.com/reachy-mini/) robot
 
 Everything runs locally on your machine. No cloud APIs required.
 
+**Tested platform:** Reachy Mini Lite with
+[`reachy-mini==1.10.0`](https://github.com/pollen-robotics/reachy_mini/releases/tag/v1.10.0)
+on Apple Silicon macOS.
+
 ## Current Status
 
 The complete stack is working on Karl, the project's Reachy Mini Lite:
@@ -99,8 +103,8 @@ BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/northern
 curl -sL "$BASE/en_GB-northern_english_male-medium.onnx"      -o piper_models/en_GB-northern_english_male-medium.onnx
 curl -sL "$BASE/en_GB-northern_english_male-medium.onnx.json" -o piper_models/en_GB-northern_english_male-medium.onnx.json
 
-# 3. Start the daemon (in a separate terminal)
-reachy-mini-daemon
+# 3. Start the local-only daemon (in a separate terminal)
+HF_HOME="$HOME/.config/karl/huggingface" reachy-mini-daemon
 
 # 4. Run individual scripts!
 python wave_antennas.py                          # wave the antennas
@@ -112,6 +116,7 @@ python reachy_speak_animated.py                  # LLM + TTS + head/antenna anim
 python reachy_wake.py                            # "Hey Karl" wake-word assistant
 python reachy_listen.py                          # continuous conversation
 python reachy_greet.py                           # watch for visitors + auto-greet
+python reachy_gpp.py                             # autonomous GPP mode
 python reachy_dashboard.py                       # local-only webhook server on port 9000
 python reachy_eyes.py                            # test the LED eyes (requires ESP32)
 ```
@@ -145,6 +150,7 @@ curl http://localhost:9000/history
 | `start_karl.sh` | One-command launcher — checks deps, starts daemon, fixes camera, wires eyes, launches Karl | No |
 | `reachy_wake.py` | Always-on "Hey Karl" wake-word assistant (STT + LLM + TTS + eyes) | No |
 | `reachy_listen.py` | Continuous conversation with speaker direction tracking + eyes | No |
+| `reachy_gpp.py` | Genuine People Personality with face following, DoA attention, blinking, naps, and overnight sleep | No |
 | `wave_antennas.py` | Wave the antennas in a friendly greeting | No |
 | `play_tone.py` | Play a C-E-G-C melody through the speaker | No |
 | `speak.py` | Simple offline speech demo using Karl's macOS voice | No |
@@ -186,7 +192,7 @@ karlctl demo
 
 Movement uses the daemon's documented REST API with named `roll`, `pitch`,
 and `yaw` values, so the direction controls match the labels in the macOS
-app. Camera snapshots use Reachy Mini 1.9's `get_frame_jpeg()` API instead
+app. Camera snapshots use Reachy Mini 1.10's `get_frame_jpeg()` API instead
 of competing with the daemon for direct OpenCV camera access.
 
 ## Fully Offline Interactive Karl
@@ -246,6 +252,9 @@ daemon, and provides Karl's calibrated `[0.15, -0.25]` antenna rest position.
 - **`reachy_greet.py`** — uses the official daemon face tracker to recognize
   a visitor, retains low-light motion detection as a fallback, and generates
   a brief Karl-style greeting.
+- **`reachy_gpp.py`** — runs Karl's autonomous Genuine People Personality:
+  face following, DoA-assisted attention, natural blinking, daytime naps,
+  overnight sleep, and rare local remarks.
 
 ### LED eye states
 
