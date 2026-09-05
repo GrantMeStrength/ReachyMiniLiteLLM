@@ -4,6 +4,10 @@ Control a [Reachy Mini Lite](https://www.pollen-robotics.com/reachy-mini/) robot
 
 Everything runs locally on your machine. No cloud APIs required.
 
+<p align="center">
+  <img src="images/robot_karl.png" alt="Karl, a Reachy Mini Lite robot with illuminated blue eyes" width="500">
+</p>
+
 **Tested platform:** Reachy Mini Lite with
 [`reachy-mini==1.10.0`](https://github.com/pollen-robotics/reachy_mini/releases/tag/v1.10.0)
 on Apple Silicon macOS.
