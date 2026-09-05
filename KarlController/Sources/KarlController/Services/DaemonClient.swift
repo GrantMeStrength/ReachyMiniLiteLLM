@@ -34,6 +34,26 @@ actor DaemonClient {
 
     private let baseURL = URL(string: "http://127.0.0.1:8000")
 
+    func waitUntilReady(timeout: TimeInterval = 20) async throws {
+        guard let url = baseURL?.appending(path: "/api/media/status") else {
+            throw DaemonClientError.invalidURL("/api/media/status")
+        }
+        let deadline = Date.now.addingTimeInterval(timeout)
+        while Date.now < deadline {
+            do {
+                let (_, response) = try await URLSession.shared.data(from: url)
+                if let response = response as? HTTPURLResponse,
+                   (200..<300).contains(response.statusCode) {
+                    return
+                }
+            } catch {
+                // The daemon's socket is unavailable while its hardware initializes.
+            }
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        throw DaemonClientError.startupTimedOut
+    }
+
     func wake() async throws {
         try await post(path: "/api/move/play/wake_up")
         try await waitForMoves()
@@ -147,6 +167,7 @@ nonisolated enum DaemonClientError: LocalizedError {
     case invalidURL(String)
     case requestFailed(Int?)
     case moveTimedOut
+    case startupTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -160,6 +181,8 @@ nonisolated enum DaemonClientError: LocalizedError {
             }
         case .moveTimedOut:
             "The Reachy movement did not finish before the safety timeout."
+        case .startupTimedOut:
+            "The Reachy daemon did not become ready within 20 seconds."
         }
     }
 }

@@ -372,6 +372,7 @@ final class RobotController {
             throw ControllerError.missingExecutable(daemonURL.path)
         }
         try await processes.startDaemon(executable: daemonURL, logURL: daemonLogURL)
+        try await daemon.waitUntilReady()
     }
 
     private func loadStatus() async {
