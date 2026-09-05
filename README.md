@@ -12,12 +12,12 @@ The complete stack is working on Karl, the project's Reachy Mini Lite:
 |-----------|--------|-------|
 | Motors and movement | Working | Wake, head pitch/yaw/roll, body rotation, antennas, nod, shake, and demo motions |
 | Microphone | Working | The replacement FPC cable must be installed in the correct orientation |
-| Speaker and speech | Working | macOS `say` and Piper both play through the robot |
+| Speaker and speech | Working | macOS `say` and Piper use Reachy Mini 1.10's daemon-side speaker EQ |
 | Camera | Working | Daemon-native JPEG capture works; `fix_camera.py` corrects the dark macOS image |
 | LED eyes | Working | USB startup recovery, color control, blinking, and periodic idle blinking |
 | Offline conversation | Working | Whisper STT, Ollama reasoning, Piper TTS, movement, eye feedback, and speaker tracking |
-| Face tracking | Working | Official daemon-side YuNet tracker with automatic macOS GStreamer fallback, manual follow mode, and visitor detection |
-| GPP mode | Working | Genuine People Personality follows faces, blinks while awake, naps in an empty room, and makes rare local remarks |
+| Face tracking | Working | Reachy Mini 1.10's adaptively smoothed daemon-side YuNet tracker, manual follow mode, and visitor detection |
+| GPP mode | Working | Genuine People Personality follows faces, turns toward detected speech, blinks while awake, naps in an empty room, and makes rare local remarks |
 | Recorded emotions | Working | Official Reachy emotions dataset available from the CLI and macOS app |
 | macOS controller | Working | Native SwiftUI app using daemon REST for motion and supported SDK media APIs |
 | OpenClaw integration | Working | `karlctl` is exposed through the installed `reachy` skill |
@@ -66,8 +66,10 @@ Then open **Karl Controller.app** from the Desktop. Set `KARL_REPO` before
 launching if the repository is stored somewhere other than
 `/Users/john/Developer/ReachyMiniLiteLLM`.
 
-**GPP** is Karl's “Genuine People Personality” mode. It keeps face following
-and natural eye blinking active while someone is present. After 45 seconds
+**GPP** is Karl's “Genuine People Personality” mode. It uses Reachy Mini
+1.10's smoothed face tracking and daemon-side microphone direction state to
+turn toward a speaker when no face is visible. Natural eye blinking remains
+active while someone is present. After 45 seconds
 without seeing a face, Karl lowers his head and turns his eyes off. Because
 the camera points down while he sleeps, he briefly raises his head every 15
 seconds to look for returning company; two successive face detections wake
@@ -103,7 +105,7 @@ reachy-mini-daemon
 # 4. Run individual scripts!
 python wave_antennas.py                          # wave the antennas
 python play_tone.py                              # play a melody
-python speak.py                                  # speak via Google TTS (online)
+python speak.py                                  # simple offline speech demo
 python reachy_say.py "Ey up!"                     # speak fully offline (macOS say)
 python reachy_speak_llm.py "Tell me a joke!"     # LLM + local TTS
 python reachy_speak_animated.py                  # LLM + TTS + head/antenna animation
@@ -145,7 +147,7 @@ curl http://localhost:9000/history
 | `reachy_listen.py` | Continuous conversation with speaker direction tracking + eyes | No |
 | `wave_antennas.py` | Wave the antennas in a friendly greeting | No |
 | `play_tone.py` | Play a C-E-G-C melody through the speaker | No |
-| `speak.py` | Speak a phrase using Google TTS | Yes |
+| `speak.py` | Simple offline speech demo using Karl's macOS voice | No |
 | `reachy_say.py` | Speak fully offline using macOS `say` (British voice) | No |
 | `reachy_speak_llm.py` | Ask Ollama a question, speak the reply with Piper TTS | No |
 | `reachy_speak_animated.py` | LLM speech + animated head/antenna movements | No |
@@ -270,7 +272,7 @@ and how much you care about voice quality:
 |--------|--------|-----------|-------|
 | `reachy_say.py` | macOS `say` | No | Zero setup — uses the built-in synthesizer. Defaults to the `Daniel` en_GB voice. |
 | `reachy_speak_llm.py` / `reachy_speak_animated.py` | Piper TTS | No | Highest quality. Uses the `en_GB-northern_english_male` voice (one-time model download) plus a local Ollama LLM. |
-| `speak.py` | Google TTS | Yes | Quick online fallback. |
+| `speak.py` | macOS `say` | No | Compatibility demo using the same offline synthesis path as `reachy_say.py`. |
 
 ### Offline speech with `reachy_say.py`
 
@@ -370,8 +372,14 @@ See **[ReachySkills.md](ReachySkills.md)** for the full SDK reference covering m
 ## Requirements
 
 - **Hardware:** Reachy Mini Lite (USB version) — optional: XIAO ESP32-C6 + RGB LEDs for the eyes (see [LED Eyes](#led-eyes))
-- **Software:** Python 3.11+, `reachy-mini==1.9.0`, [Ollama](https://ollama.com) with a model (e.g. `llama3.2`), Swift 6.2+ to build Karl Controller
+- **Software:** Python 3.11+, `reachy-mini==1.10.0`, [Ollama](https://ollama.com) with a model (e.g. `llama3.2`), Swift 6.2+ to build Karl Controller
 - **OS:** macOS on Apple Silicon for the complete tested stack and native controller; the Python control code may also work on Linux
+
+Karl starts the daemon with an isolated Hugging Face home at
+`~/.config/karl/huggingface`, so a token stored in the normal user account
+does not automatically enable Reachy's remote signaling relay. Set
+`KARL_HF_HOME` before running `start_karl.sh` only when remote access is
+intentionally required.
 
 ## Known Limitations
 
@@ -382,12 +390,9 @@ See **[ReachySkills.md](ReachySkills.md)** for the full SDK reference covering m
 - Karl Controller defaults to this machine's repository, Python environment,
   and daemon paths. `KARL_REPO` overrides the repository path, but fully
   portable dependency discovery is still future work.
-- The official conversation app has stricter dependency pins than Reachy Mini
-  1.9. Karl's control/daemon environment and conversation-app environment are
+- The official conversation app has its own dependency set. Karl's
+  control/daemon environment and conversation-app environment are
   intentionally kept separate.
-- Reachy Mini 1.9 probes the Linux-only `v4l2convert` plugin when face tracking
-  starts. `fix_face_tracking.py` applies the intended macOS
-  `videoscale`/`videoconvert` fallback automatically before daemon startup.
 - Camera and microphone access are subject to macOS privacy permissions for
   the process launching the command.
 

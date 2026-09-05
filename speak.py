@@ -1,38 +1,11 @@
-"""Make Reachy Mini speak words through its speaker using Google TTS."""
+"""Compatibility speech demo using Karl's offline macOS voice."""
 
 from reachy_mini import ReachyMini
-from gtts import gTTS
-import subprocess
-import numpy as np
-import wave
 import time
-import tempfile
-import os
 from karl_config import LOCAL_CONNECTION_MODE
+from reachy_say import text_to_samples
 
 SAMPLE_RATE = 16000
-
-
-def text_to_samples(text: str) -> np.ndarray:
-    """Convert text to 16kHz float32 mono audio samples."""
-    with tempfile.TemporaryDirectory() as tmp:
-        mp3_path = os.path.join(tmp, "speech.mp3")
-        wav_path = os.path.join(tmp, "speech.wav")
-
-        # Google TTS → MP3
-        tts = gTTS(text, lang="en")
-        tts.save(mp3_path)
-
-        # MP3 → 16kHz mono PCM16 WAV
-        subprocess.run(
-            ["afconvert", "-f", "WAVE", "-d", f"LEI16@{SAMPLE_RATE}", "-c", "1",
-             mp3_path, wav_path],
-            check=True, capture_output=True
-        )
-
-        with wave.open(wav_path) as w:
-            raw = w.readframes(w.getnframes())
-            return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
 
 
 def main():
@@ -43,7 +16,7 @@ def main():
         text = "Hello! I am Reachy Mini! Nice to meet you!"
         print(f'🗣️ Speaking: "{text}"')
 
-        samples = text_to_samples(text)
+        samples = text_to_samples(text, "Daniel")
         duration = len(samples) / SAMPLE_RATE
         print(f"   Audio: {duration:.1f}s")
 

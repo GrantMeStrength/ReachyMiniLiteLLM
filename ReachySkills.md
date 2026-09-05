@@ -435,17 +435,14 @@ with ReachyMini(media_backend="default") as mini:
     mini.media.stop_playing()
 ```
 
-### 7c. Text-to-Speech (Requires Internet)
+### 7c. Text-to-Speech with macOS `say` (Offline)
 
-> **Deps:** `pip install gtts`
->
-> **macOS note:** Both `say -o` and `pyttsx3.save_to_file()` produce truncated audio on
-> recent macOS versions. Use **gTTS** (Google TTS) instead — it generates proper MP3 files
-> which are then converted to 16 kHz WAV via macOS `afconvert`.
+Karl's simplest speech path uses the built-in `say` command, converts its
+AIFF output to 16 kHz mono WAV with `afconvert`, and sends the samples to the
+robot. It requires no cloud service or additional Python dependency.
 
 ```python
 from reachy_mini import ReachyMini
-from gtts import gTTS
 import subprocess
 import numpy as np
 import wave
@@ -456,17 +453,18 @@ import os
 SAMPLE_RATE = 16000
 
 def text_to_samples(text: str) -> np.ndarray:
-    """Convert text to 16kHz float32 mono audio via Google TTS."""
+    """Convert text to 16kHz float32 mono audio via macOS say."""
     with tempfile.TemporaryDirectory() as tmp:
-        mp3_path = os.path.join(tmp, "speech.mp3")
+        aiff_path = os.path.join(tmp, "speech.aiff")
         wav_path = os.path.join(tmp, "speech.wav")
 
-        gTTS(text, lang="en").save(mp3_path)
-
-        # macOS: afconvert MP3 → 16kHz mono PCM16 WAV
+        subprocess.run(
+            ["say", "-v", "Daniel", "-o", aiff_path, text],
+            check=True,
+        )
         subprocess.run(
             ["afconvert", "-f", "WAVE", "-d", f"LEI16@{SAMPLE_RATE}", "-c", "1",
-             mp3_path, wav_path],
+             aiff_path, wav_path],
             check=True, capture_output=True
         )
 
@@ -474,7 +472,10 @@ def text_to_samples(text: str) -> np.ndarray:
             raw = w.readframes(w.getnframes())
             return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
 
-with ReachyMini(media_backend="default") as mini:
+with ReachyMini(
+    media_backend="default",
+    connection_mode="localhost_only",
+) as mini:
     samples = text_to_samples("Hello! I am Reachy Mini! Nice to meet you!")
 
     mini.media.start_playing()
@@ -482,11 +483,6 @@ with ReachyMini(media_backend="default") as mini:
     time.sleep(len(samples) / SAMPLE_RATE + 0.5)
     mini.media.stop_playing()
 ```
-
-> **Cross-platform note:** On Linux, replace `afconvert` with `ffmpeg`:
-> ```bash
-> ffmpeg -i speech.mp3 -ar 16000 -ac 1 -f wav speech.wav
-> ```
 
 ### 7d. LLM + Local TTS — Fully Offline Speech (Recommended)
 
@@ -572,7 +568,7 @@ with ReachyMini(media_backend="default") as mini:
 | Approach | Voice Quality | Internet | Latency | Install |
 |----------|--------------|----------|---------|---------|
 | Numpy tones (§7b) | Beeps only | ❌ No | Instant | None |
-| gTTS (§7c) | Decent | ✅ Yes | ~1-2s | `pip install gtts` |
+| macOS `say` (§7c) | Basic | ❌ No | ~0.5s | Included with macOS |
 | Piper TTS (§7d) | Good, natural | ❌ No | ~0.5s | `pip install piper-tts` + model |
 | Piper + Ollama (§7d) | Good + smart | ❌ No | ~2-5s | Both above + `pip install ollama` |
 

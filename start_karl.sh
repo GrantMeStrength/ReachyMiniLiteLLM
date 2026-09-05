@@ -35,11 +35,6 @@ elif command -v python3 >/dev/null 2>&1;  then PY="$(command -v python3)"
 else die "No Python interpreter found. Create one with: python3 -m venv venv"; fi
 green "Python: $PY"
 
-# Reachy Mini 1.9 needs a small macOS fallback for its Linux-only face
-# tracking converter probe. This is idempotent and survives fresh installs.
-"$PY" fix_face_tracking.py >/tmp/reachy-face-tracking-fix.log 2>&1 \
-  || warn "Face tracking fallback not applied (see /tmp/reachy-face-tracking-fix.log)"
-
 # ── 2. Piper voice model (download once if missing) ──────────────────────
 if [ ! -s "$PIPER_MODEL" ] || [ ! -s "$PIPER_CONFIG" ]; then
   warn "Piper voice model missing — downloading (~60MB)…"
@@ -91,7 +86,8 @@ if ! daemon_ready; then
   [ -n "$DAEMON" ] || die "reachy-mini-daemon not found"
   if ! pgrep -f reachy-mini-daemon >/dev/null 2>&1; then
     warn "Starting Reachy Mini daemon…"
-    "$DAEMON" >/tmp/reachy-daemon.log 2>&1 &
+    HF_HOME="${KARL_HF_HOME:-$HOME/.config/karl/huggingface}" \
+      "$DAEMON" >/tmp/reachy-daemon.log 2>&1 &
   fi
   for _ in $(seq 1 20); do
     daemon_ready && break

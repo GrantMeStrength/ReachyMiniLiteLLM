@@ -1,10 +1,9 @@
-reachy-mini==1.9.0
+reachy-mini==1.10.0
 ollama
 pyserial
 pyusb
 piper-tts
 scipy
-gtts
 numpy
 opencv-python
 Pillow

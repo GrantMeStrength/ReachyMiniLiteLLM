@@ -12,7 +12,11 @@ actor ManagedProcessStore {
             executable: executable,
             arguments: [],
             currentDirectory: nil,
-            logURL: logURL
+            logURL: logURL,
+            environment: [
+                "HF_HOME": FileManager.default.homeDirectoryForCurrentUser
+                    .appending(path: ".config/karl/huggingface").path
+            ]
         )
     }
 
@@ -95,7 +99,8 @@ actor ManagedProcessStore {
         executable: URL,
         arguments: [String],
         currentDirectory: URL?,
-        logURL: URL
+        logURL: URL,
+        environment: [String: String] = [:]
     ) throws -> Process {
         FileManager.default.createFile(atPath: logURL.path, contents: nil)
         let log = try FileHandle(forWritingTo: logURL)
@@ -105,6 +110,9 @@ actor ManagedProcessStore {
         process.executableURL = executable
         process.arguments = arguments
         process.currentDirectoryURL = currentDirectory
+        process.environment = ProcessInfo.processInfo.environment.merging(
+            environment
+        ) { _, override in override }
         process.standardOutput = log
         process.standardError = log
         try process.run()

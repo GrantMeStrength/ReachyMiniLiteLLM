@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 import random
 import signal
 import serial
@@ -36,6 +37,7 @@ COMMENT_AFTER_SECONDS = 90
 COMMENT_CHECK_INTERVAL = 60
 COMMENT_CHANCE = 0.025
 COMMENT_COOLDOWN_SECONDS = 3 * 60 * 60
+SOUND_ATTENTION_COOLDOWN_SECONDS = 12
 BEDTIME_HOUR = 22
 WAKE_HOUR = 7
 
@@ -148,6 +150,46 @@ def disable_tracking() -> None:
 def face_detected() -> bool:
     response = daemon_request("/api/media/tracking/face")
     return bool(response.get("face_target", {}).get("detected"))
+
+
+def sound_direction() -> float | None:
+    """Return the active speech direction in radians, if available."""
+    response = daemon_request("/api/state/doa")
+    if not response or not response.get("speech_detected"):
+        return None
+    return float(response["angle"])
+
+
+def look_toward_sound(angle: float) -> float:
+    """Turn toward speech so the face tracker can acquire its speaker."""
+    yaw_degrees = max(
+        -35.0,
+        min(35.0, -math.degrees(angle - math.pi / 2)),
+    )
+    disable_tracking()
+    try:
+        daemon_request("/api/motors/set_mode/enabled", {})
+        daemon_request(
+            "/api/move/goto",
+            {
+                "head_pose": {
+                    "x": 0,
+                    "y": 0,
+                    "z": 0,
+                    "roll": 0,
+                    "pitch": 0,
+                    "yaw": math.radians(yaw_degrees),
+                },
+                "antennas": ANTENNA_REST,
+                "body_yaw": 0,
+                "duration": 0.6,
+                "interpolation": "minjerk",
+            },
+        )
+        time.sleep(0.8)
+    finally:
+        enable_tracking()
+    return yaw_degrees
 
 
 def is_overnight(now: datetime.datetime | None = None) -> bool:
@@ -267,6 +309,7 @@ def main() -> None:
     last_comment = time.monotonic() - COMMENT_COOLDOWN_SECONDS
     next_comment_check = last_comment + COMMENT_CHECK_INTERVAL
     next_nap_peek = last_comment
+    last_sound_attention = last_comment
 
     if overnight:
         print("GPP active during overnight hours; sleeping until 7:00 AM.", flush=True)
@@ -346,6 +389,25 @@ def main() -> None:
                     person_present_since = now
             else:
                 person_present_since = None
+                if now - last_sound_attention >= SOUND_ATTENTION_COOLDOWN_SECONDS:
+                    try:
+                        angle = sound_direction()
+                        if angle is not None:
+                            yaw = look_toward_sound(angle)
+                            print(
+                                f"GPP turned {yaw:+.0f}° toward detected speech.",
+                                flush=True,
+                            )
+                            last_sound_attention = time.monotonic()
+                    except (
+                        OSError,
+                        urllib.error.URLError,
+                        json.JSONDecodeError,
+                        KeyError,
+                        TypeError,
+                        ValueError,
+                    ) as error:
+                        print(f"GPP sound direction check failed: {error}", flush=True)
 
             if awake and now - last_seen >= NAP_AFTER_SECONDS:
                 print("GPP room is empty; napping.", flush=True)
