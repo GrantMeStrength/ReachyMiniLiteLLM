@@ -9,12 +9,15 @@ from scipy.signal import resample
 from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
 import reachy_leds
+from karl_config import (
+    ANTENNA_REST,
+    LOCAL_CONNECTION_MODE,
+    OLLAMA_MODEL,
+    PIPER_CONFIG,
+    PIPER_MODEL,
+)
 
-OLLAMA_MODEL = "llama3.2"
-PIPER_MODEL = "piper_models/en_GB-northern_english_male-medium.onnx"
-PIPER_CONFIG = "piper_models/en_GB-northern_english_male-medium.onnx.json"
 ROBOT_SAMPLE_RATE = 16000
-ANTENNA_NEUTRAL = [0.15, -0.25]  # verified outside Karl's backlash zone
 
 from robot_karl_prompt import ROBOT_KARL_PROMPT as SYSTEM_PROMPT
 
@@ -79,7 +82,7 @@ def animate_while_speaking(mini: ReachyMini, duration: float):
     # Return to neutral
     mini.goto_target(
         head=create_head_pose(),
-        antennas=ANTENNA_NEUTRAL,
+        antennas=ANTENNA_REST,
         body_yaw=0.0,
         duration=0.6,
         method="minjerk",
@@ -99,7 +102,10 @@ def main():
 
     led_ser = reachy_leds.connect()
 
-    with ReachyMini(media_backend="default") as mini:
+    with ReachyMini(
+        media_backend="default",
+        connection_mode=LOCAL_CONNECTION_MODE,
+    ) as mini:
         mini.media.start_playing()
 
         # Start LED glow and animation in background threads

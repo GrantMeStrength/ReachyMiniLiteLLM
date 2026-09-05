@@ -41,13 +41,13 @@ import signal
 import threading
 
 import math
+from karl_config import ANTENNA_REST
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 DAEMON = os.environ.get("REACHY_DAEMON", "http://127.0.0.1:8000")
-CAM_INDEX = int(os.environ.get("REACHY_CAM_INDEX", "0"))
 VOICE = os.environ.get("KARL_VOICE", "Daniel")  # en_GB male, Karl's accent
 
 
@@ -121,29 +121,28 @@ BODY_YAWS = {
 ANTENNA_POSITIONS = {
     "up": [0.6, -0.6],
     "down": [-0.6, 0.6],
-    "neutral": [0.15, -0.25],
+    "neutral": ANTENNA_REST,
 }
 ANTENNA_NEUTRAL = ANTENNA_POSITIONS["neutral"]
 
 EMOTION_DATASET = "pollen-robotics/reachy-mini-emotions-library"
 
 
-# ----------------------------------------------------------------------------- eyes
-def _eyes_connect():
-    import reachy_leds
-    return reachy_leds.connect()
-
-
 # ----------------------------------------------------------------------------- speech
-def _synthesize(text, voice):
+def _synthesize(text, voice, output_dir):
     """macOS say -> 44.1kHz mono PCM16 wav. Returns (path, duration_s)."""
-    tmp = tempfile.mkdtemp(prefix="karl_")
-    aiff = os.path.join(tmp, "s.aiff")
-    wav = os.path.join(tmp, "s.wav")
-    subprocess.run(["say", "-v", voice, "-o", aiff, text], check=True)
+    aiff = os.path.join(output_dir, "speech.aiff")
+    wav = os.path.join(output_dir, "speech.wav")
+    subprocess.run(
+        ["say", "-v", voice, "-o", aiff, text],
+        check=True,
+        timeout=30,
+    )
     subprocess.run(
         ["afconvert", "-f", "WAVE", "-d", "LEI16@44100", "-c", "1", aiff, wav],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
+        timeout=30,
     )
     with wave.open(wav) as w:
         dur = w.getnframes() / float(w.getframerate())
@@ -161,9 +160,14 @@ def cmd_status(args):
     try:
         import reachy_leds
         ser = reachy_leds.connect()
-        out["eyes"] = reachy_leds.ping(ser)
-        if ser:
+        if ser is not None:
+            out["eyes"] = reachy_leds.ping(ser)
             ser.close()
+        else:
+            out["eyes"] = (
+                reachy_leds.is_in_use()
+                and reachy_leds.has_recent_heartbeat()
+            )
     except Exception:
         pass
     try:
@@ -232,23 +236,24 @@ def cmd_shake(args):
 
 def cmd_speak(args):
     text = " ".join(args.text)
-    wav, dur = _synthesize(text, args.voice)
-    _daemon_post("/api/media/play_sound", {"file": wav})
-    if args.move:
-        t0 = time.time()
-        i = 0
-        while time.time() - t0 < dur:
-            _goto(
-                head={
-                    "pitch": 7 if i % 2 == 0 else -3,
-                    "yaw": 4 if i % 2 == 0 else -4,
-                },
-                duration=0.35,
-            )
-            i += 1
-        _goto(head={}, duration=0.4)
-    else:
-        time.sleep(dur + 0.3)
+    with tempfile.TemporaryDirectory(prefix="karl_") as output_dir:
+        wav, dur = _synthesize(text, args.voice, output_dir)
+        _daemon_post("/api/media/play_sound", {"file": wav})
+        if args.move:
+            t0 = time.monotonic()
+            i = 0
+            while time.monotonic() - t0 < dur:
+                _goto(
+                    head={
+                        "pitch": 7 if i % 2 == 0 else -3,
+                        "yaw": 4 if i % 2 == 0 else -4,
+                    },
+                    duration=0.35,
+                )
+                i += 1
+            _goto(head={}, duration=0.4)
+        else:
+            time.sleep(dur + 0.3)
     return _ok(action="speak", text=text, seconds=round(dur, 1), voice=args.voice)
 
 

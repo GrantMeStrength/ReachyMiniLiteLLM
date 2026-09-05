@@ -18,9 +18,9 @@ Usage:
     eyes.close()
 """
 
-import serial
 import time
 import threading
+import reachy_leds
 
 
 class RobotEyes:
@@ -43,21 +43,17 @@ class RobotEyes:
 
     def __init__(self, port=None):
         """Connect to the eye controller. Auto-detects port if not specified."""
-        if port is None:
-            from reachy_leds import find_port
-
-            self._ser = find_port(self.BAUD)
-            if self._ser is None:
-                raise ConnectionError(
-                    "Could not find XIAO eye controller. "
-                    "Check USB connection and that firmware is flashed."
-                )
-        else:
-            self._ser = serial.Serial(port, self.BAUD, timeout=self.TIMEOUT)
+        self._ser = reachy_leds.connect(port, self.BAUD)
+        if self._ser is None:
+            raise ConnectionError(
+                "Could not find XIAO eye controller. "
+                "Check USB connection and that firmware is flashed."
+            )
         time.sleep(0.5)  # wait for READY
         self._ser.reset_input_buffer()
         self._lock = threading.Lock()
         self._pulse_stop = None
+        self._pulse_thread = None
 
     def _send(self, cmd):
         """Send a command and wait for response."""
@@ -131,16 +127,21 @@ class RobotEyes:
         """Pulse (breathe) a color. Runs until stop_pulse() is called."""
         self.stop_pulse()
         self._pulse_stop = threading.Event()
-        t = threading.Thread(target=self._pulse_loop,
-                             args=(r, g, b, period, self._pulse_stop),
-                             daemon=True)
-        t.start()
+        self._pulse_thread = threading.Thread(
+            target=self._pulse_loop,
+            args=(r, g, b, period, self._pulse_stop),
+            daemon=True,
+        )
+        self._pulse_thread.start()
 
     def stop_pulse(self):
         """Stop any running pulse animation."""
         if self._pulse_stop is not None:
             self._pulse_stop.set()
-            self._pulse_stop = None
+        if self._pulse_thread is not None:
+            self._pulse_thread.join()
+        self._pulse_stop = None
+        self._pulse_thread = None
 
     def _pulse_loop(self, r, g, b, period, stop_event):
         """Fade in/out loop."""
@@ -151,7 +152,7 @@ class RobotEyes:
             brightness = (math.sin(t * 2 * math.pi / period) + 1) / 2  # 0..1
             br = max(0.1, brightness)  # never fully off
             self.set_both(int(r * br), int(g * br), int(b * br))
-            time.sleep(step)
+            stop_event.wait(step)
             t += step
 
     def close(self):

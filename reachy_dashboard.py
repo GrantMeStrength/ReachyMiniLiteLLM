@@ -22,16 +22,18 @@ Examples:
 """
 
 import asyncio
+import subprocess
 import threading
 import time
 import io
 from collections import deque
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 import numpy as np
 import ollama
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from piper import PiperVoice
@@ -40,12 +42,21 @@ from PIL import Image
 
 from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
+from fix_camera import (
+    find_uvc_util,
+    get_power_line_frequency,
+    set_power_line_frequency,
+)
+from karl_config import (
+    ANTENNA_REST,
+    LOCAL_CONNECTION_MODE,
+    OLLAMA_MODEL,
+    PIPER_CONFIG,
+    PIPER_MODEL,
+)
 from robot_karl_prompt import ROBOT_KARL_PROMPT
 
 # --- Config ---
-OLLAMA_MODEL = "llama3.2"
-PIPER_MODEL = "piper_models/en_GB-northern_english_male-medium.onnx"
-PIPER_CONFIG = "piper_models/en_GB-northern_english_male-medium.onnx.json"
 ROBOT_SAMPLE_RATE = 16000
 PITCH_SHIFT = 0.95
 PORT = 9000
@@ -59,9 +70,11 @@ ANNOUNCE_PROMPT = ROBOT_KARL_PROMPT + (
 class SayRequest(BaseModel):
     message: str
 
+
 class AnnounceRequest(BaseModel):
     event: str
     context: str = ""
+
 
 class HistoryEntry(BaseModel):
     timestamp: str
@@ -69,16 +82,36 @@ class HistoryEntry(BaseModel):
     input: str
     spoken: str
 
-# --- Globals ---
-app = FastAPI(title="Robot Karl Dashboard", version="1.0")
-voice: PiperVoice = None
-mini: ReachyMini = None
 speak_lock = threading.Lock()
 history: deque[HistoryEntry] = deque(maxlen=50)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("📷 Checking camera brightness...")
+    fix_camera_brightness()
+    print("🤖 Loading voice model...")
+    app.state.voice = PiperVoice.load(PIPER_MODEL, PIPER_CONFIG)
+    print("🔌 Connecting to robot...")
+    app.state.mini = ReachyMini(
+        media_backend="default",
+        connection_mode=LOCAL_CONNECTION_MODE,
+    )
+    try:
+        yield
+    finally:
+        app.state.mini.__exit__(None, None, None)
+
+
+app = FastAPI(
+    title="Robot Karl Dashboard",
+    version="1.1",
+    lifespan=lifespan,
+)
+
+
 def tts_synthesize(text: str) -> np.ndarray:
-    chunks = list(voice.synthesize(text))
+    chunks = list(app.state.voice.synthesize(text))
     if not chunks:
         return np.array([], dtype=np.float32)
     samples = np.concatenate([ch.audio_float_array for ch in chunks])
@@ -103,13 +136,13 @@ def animate_while_speaking(duration: float):
         d = min(d, duration - (time.time() - start))
         if d < 0.1:
             break
-        mini.goto_target(
+        app.state.mini.goto_target(
             head=create_head_pose(y=y, z=z, pitch=p, yaw=yw, mm=False, degrees=True),
             antennas=[al, ar], body_yaw=by, duration=d, method="minjerk",
         )
         i += 1
-    mini.goto_target(
-        head=create_head_pose(), antennas=[0, 0], body_yaw=0,
+    app.state.mini.goto_target(
+        head=create_head_pose(), antennas=ANTENNA_REST, body_yaw=0,
         duration=0.6, method="minjerk",
     )
 
@@ -120,13 +153,15 @@ def speak_text(text: str):
         samples = tts_synthesize(text)
         duration = len(samples) / ROBOT_SAMPLE_RATE
 
-        mini.media.start_playing()
+        app.state.mini.media.start_playing()
         animator = threading.Thread(target=animate_while_speaking, args=(duration,))
         animator.start()
-        mini.media.push_audio_sample(samples.reshape(-1, 1))
-        animator.join()
-        time.sleep(0.3)
-        mini.media.stop_playing()
+        try:
+            app.state.mini.media.push_audio_sample(samples.reshape(-1, 1))
+            time.sleep(0.3)
+        finally:
+            animator.join()
+            app.state.mini.media.stop_playing()
 
 
 def add_history(type: str, input_text: str, spoken: str):
@@ -141,7 +176,7 @@ def add_history(type: str, input_text: str, spoken: str):
 @app.get("/status")
 def get_status():
     return {
-        "robot": "online",
+        "robot": "online" if hasattr(app.state, "mini") else "offline",
         "model": OLLAMA_MODEL,
         "voice": PIPER_MODEL,
         "history_count": len(history),
@@ -190,7 +225,9 @@ def get_history():
 @app.get("/camera")
 async def get_camera():
     """Return a JPEG snapshot from the robot's camera."""
-    frame = await asyncio.to_thread(mini.media.get_frame)
+    frame = await asyncio.to_thread(app.state.mini.media.get_frame)
+    if frame is None:
+        raise HTTPException(status_code=503, detail="Camera frame is unavailable.")
     img = Image.fromarray(frame)
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=85)
@@ -199,37 +236,24 @@ async def get_camera():
 
 
 def fix_camera_brightness():
-    """Disable powerline frequency filter to fix dark camera on macOS.
-    Uses uvc-util to send UVC SET_CUR request. Setting persists in firmware."""
-    import subprocess, shutil
-    uvc_util = shutil.which("uvc-util") or "/Users/john/Developer/tools/uvc-util"
+    """Apply the shared camera workaround only when the setting needs it."""
+    uvc_util = find_uvc_util()
+    if uvc_util is None:
+        print("⚠️  uvc-util not found — camera brightness not auto-fixed")
+        return
     try:
-        result = subprocess.run(
-            [uvc_util, "-I", "0", "-s", "power-line-frequency=0"],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
+        current = get_power_line_frequency(uvc_util)
+        if current == 0:
+            print("📷 Camera brightness is already configured")
+        elif current is not None and set_power_line_frequency(uvc_util, 0):
             print("📷 Camera brightness fix applied (power-line-frequency=0)")
         else:
-            print(f"⚠️  Camera fix failed: {result.stderr.strip()}")
-    except FileNotFoundError:
-        print("⚠️  uvc-util not found — camera brightness not auto-fixed")
-    except Exception as e:
-        print(f"⚠️  Camera fix error: {e}")
+            print("⚠️  Camera brightness fix could not be applied")
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
+        print(f"⚠️  Camera brightness check failed: {error}")
 
 
 def main():
-    global voice, mini
-
-    print("📷 Fixing camera brightness...")
-    fix_camera_brightness()
-
-    print("🤖 Loading voice model...")
-    voice = PiperVoice.load(PIPER_MODEL, PIPER_CONFIG)
-
-    print("🔌 Connecting to robot...")
-    mini = ReachyMini(media_backend="default")
-
     print(f"🚀 Robot Karl Dashboard running on http://localhost:{PORT}")
     print(f"   POST /say       — speak a message directly")
     print(f"   POST /announce  — LLM-styled announcement")
@@ -238,7 +262,7 @@ def main():
     print(f"   GET  /camera    — JPEG snapshot from camera")
     print()
 
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ Commands: OFF, L0:r,g,b, L1:r,g,b  (values 0-255)
 """
 
 import os
+import fcntl
 import serial
 import serial.tools.list_ports
 import threading
@@ -15,6 +16,72 @@ ESP32_PORT = "/dev/cu.usbmodem3121301"  # legacy fixed-port fallback
 ESP32_BAUD = 115200
 ESPRESSIF_VID = 0x303A
 ESP32_USB_JTAG_PID = 0x1001
+EYE_LOCK_PATH = "/tmp/karl-eyes.lock"
+EYE_HEARTBEAT_PATH = "/tmp/karl-eyes.heartbeat"
+
+
+class LockedSerial:
+    """Proxy a serial connection while retaining its interprocess lock."""
+
+    def __init__(self, connection, lock_file):
+        object.__setattr__(self, "_connection", connection)
+        object.__setattr__(self, "_lock_file", lock_file)
+        object.__setattr__(self, "_closed", False)
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._connection, name, value)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, _exc_type, _exc_value, _traceback):
+        self.close()
+
+    def close(self):
+        if self._closed:
+            return
+        object.__setattr__(self, "_closed", True)
+        try:
+            self._connection.close()
+        finally:
+            fcntl.flock(self._lock_file, fcntl.LOCK_UN)
+            self._lock_file.close()
+
+
+def _acquire_eye_lock():
+    lock_file = open(EYE_LOCK_PATH, "a+")
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return lock_file
+    except BlockingIOError:
+        lock_file.close()
+        return None
+
+
+def is_in_use():
+    """Return whether another Karl process currently owns the eye controller."""
+    lock_file = _acquire_eye_lock()
+    if lock_file is None:
+        return True
+    fcntl.flock(lock_file, fcntl.LOCK_UN)
+    lock_file.close()
+    return False
+
+
+def has_recent_heartbeat(max_age=10.0):
+    """Return whether the lock owner recently wrote to the eye controller."""
+    try:
+        return time.time() - os.path.getmtime(EYE_HEARTBEAT_PATH) <= max_age
+    except OSError:
+        return False
+
+
+def _record_heartbeat():
+    with open(EYE_HEARTBEAT_PATH, "a"):
+        os.utime(EYE_HEARTBEAT_PATH)
 
 
 def _reset_usb_device(serial_number):
@@ -45,8 +112,9 @@ def _recover_serial(ser):
     ser.reset_input_buffer()
 
 
-def _probe(port, baud):
+def _probe(port, baud, recover=False):
     """Open a port and return the serial handle if it answers PING with PONG."""
+    ser = None
     try:
         ser = serial.Serial(port, baud, timeout=1)
         time.sleep(0.5)
@@ -56,16 +124,17 @@ def _probe(port, baud):
         ser.write(b"PING\n")
         time.sleep(0.2)
         resp = ser.readline().decode(errors="replace").strip() if ser.in_waiting else ""
-        if resp != "PONG":
+        if resp != "PONG" and recover:
             _recover_serial(ser)
             ser.write(b"PING\n")
             time.sleep(0.2)
             resp = ser.readline().decode(errors="replace").strip() if ser.in_waiting else ""
         if resp == "PONG":
             return ser
-        ser.close()
     except Exception:
         pass
+    if ser is not None:
+        ser.close()
     return None
 
 
@@ -76,34 +145,49 @@ def find_port(baud=ESP32_BAUD):
     device that is not the Reachy Mini's own port (serial number 5B7B).
     Returns an open serial handle, or None if no eye controller is found.
     """
+    lock_file = _acquire_eye_lock()
+    if lock_file is None:
+        return None
+
     tried = set()
     candidates = []
-
     ports = list(serial.tools.list_ports.comports())
-    for p in ports:
-        if (p.vid, p.pid) == (ESPRESSIF_VID, ESP32_USB_JTAG_PID):
-            _reset_usb_device(p.serial_number)
-            ports = list(serial.tools.list_ports.comports())
-            break
 
     env_port = os.environ.get("REACHY_EYES_PORT")
     if env_port:
-        candidates.append(env_port)
-    candidates.append(ESP32_PORT)
+        candidates.append((env_port, True))
+    candidates.append((ESP32_PORT, True))
 
     for p in ports:
         if "5B7B" in (p.serial_number or ""):  # skip Reachy Mini's own port
             continue
         if any(tag in p.device for tag in ("usbmodem", "usbserial", "wchusbserial")):
-            candidates.append(p.device)
+            is_eye_controller = (p.vid, p.pid) == (
+                ESPRESSIF_VID,
+                ESP32_USB_JTAG_PID,
+            )
+            candidates.append((p.device, is_eye_controller))
 
-    for dev in candidates:
+    for dev, can_recover in candidates:
         if dev in tried:
             continue
         tried.add(dev)
-        ser = _probe(dev, baud)
+        ser = _probe(dev, baud, recover=can_recover)
         if ser:
-            return ser
+            return LockedSerial(ser, lock_file)
+
+    eye_devices = [
+        p for p in ports
+        if (p.vid, p.pid) == (ESPRESSIF_VID, ESP32_USB_JTAG_PID)
+    ]
+    if eye_devices and _reset_usb_device(eye_devices[0].serial_number):
+        for p in serial.tools.list_ports.comports():
+            if p.serial_number == eye_devices[0].serial_number:
+                ser = _probe(p.device, baud, recover=True)
+                if ser:
+                    return LockedSerial(ser, lock_file)
+    fcntl.flock(lock_file, fcntl.LOCK_UN)
+    lock_file.close()
     return None
 
 
@@ -115,18 +199,23 @@ def connect(port=None, baud=ESP32_BAUD):
     enumerates on a different /dev/cu.* path between reboots.
     """
     if port is not None:
+        lock_file = _acquire_eye_lock()
+        if lock_file is None:
+            return None
         try:
             ser = serial.Serial(port, baud, timeout=1)
             time.sleep(0.5)
             if ser.in_waiting:
                 ser.read(ser.in_waiting)
-            return ser
+            return LockedSerial(ser, lock_file)
         except Exception as e:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+            lock_file.close()
             print(f"⚠️  LED ESP32 not available on {port}: {e}")
             return None
 
     ser = find_port(baud)
-    if ser is None:
+    if ser is None and not is_in_use():
         print("⚠️  LED eyes not detected — continuing without them.")
     return ser
 
@@ -140,7 +229,9 @@ def ping(ser):
     time.sleep(0.2)
     if ser.in_waiting:
         resp = ser.readline().decode(errors="replace").strip()
-        return resp == "PONG"
+        if resp == "PONG":
+            _record_heartbeat()
+            return True
     return False
 
 
@@ -149,6 +240,7 @@ def set_color(ser, r, g, b):
     if not ser:
         return
     ser.write(f"LA:{r},{g},{b}\n".encode())
+    _record_heartbeat()
     if ser.in_waiting:
         ser.read(ser.in_waiting)
 
@@ -158,6 +250,7 @@ def set_left(ser, r, g, b):
     if not ser:
         return
     ser.write(f"L0:{r},{g},{b}\n".encode())
+    _record_heartbeat()
     if ser.in_waiting:
         ser.read(ser.in_waiting)
 
@@ -167,6 +260,7 @@ def set_right(ser, r, g, b):
     if not ser:
         return
     ser.write(f"L1:{r},{g},{b}\n".encode())
+    _record_heartbeat()
     if ser.in_waiting:
         ser.read(ser.in_waiting)
 
@@ -176,6 +270,7 @@ def off(ser):
     if not ser:
         return
     ser.write(b"OFF\n")
+    _record_heartbeat()
     if ser.in_waiting:
         ser.read(ser.in_waiting)
 

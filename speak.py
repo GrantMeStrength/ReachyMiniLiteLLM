@@ -8,6 +8,7 @@ import wave
 import time
 import tempfile
 import os
+from karl_config import LOCAL_CONNECTION_MODE
 
 SAMPLE_RATE = 16000
 
@@ -34,17 +35,25 @@ def text_to_samples(text: str) -> np.ndarray:
             return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
 
 
-with ReachyMini(media_backend="default") as mini:
-    text = "Hello! I am Reachy Mini! Nice to meet you!"
-    print(f'🗣️ Speaking: "{text}"')
+def main():
+    with ReachyMini(
+        media_backend="default",
+        connection_mode=LOCAL_CONNECTION_MODE,
+    ) as mini:
+        text = "Hello! I am Reachy Mini! Nice to meet you!"
+        print(f'🗣️ Speaking: "{text}"')
 
-    samples = text_to_samples(text)
-    duration = len(samples) / SAMPLE_RATE
-    print(f"   Audio: {duration:.1f}s")
+        samples = text_to_samples(text)
+        duration = len(samples) / SAMPLE_RATE
+        print(f"   Audio: {duration:.1f}s")
 
-    mini.media.start_playing()
-    mini.media.push_audio_sample(samples.reshape(-1, 1))
-    time.sleep(duration + 0.5)
-    mini.media.stop_playing()
+        mini.media.start_playing()
+        mini.media.push_audio_sample(samples.reshape(-1, 1))
+        time.sleep(duration + 0.5)
+        mini.media.stop_playing()
 
-    print("✅ Done!")
+        print("✅ Done!")
+
+
+if __name__ == "__main__":
+    main()

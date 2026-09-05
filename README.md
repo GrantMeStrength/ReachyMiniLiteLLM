@@ -110,11 +110,16 @@ python reachy_speak_animated.py                  # LLM + TTS + head/antenna anim
 python reachy_wake.py                            # "Hey Karl" wake-word assistant
 python reachy_listen.py                          # continuous conversation
 python reachy_greet.py                           # watch for visitors + auto-greet
-python reachy_dashboard.py                       # webhook server on port 9000
+python reachy_dashboard.py                       # local-only webhook server on port 9000
 python reachy_eyes.py                            # test the LED eyes (requires ESP32)
 ```
 
 ### Dashboard API (port 9000)
+
+The dashboard binds to `127.0.0.1` by default because its control and camera
+endpoints are intentionally unauthenticated. Use an authenticated proxy rather
+than exposing port 9000 directly to a network.
+
 ```bash
 # Speak directly
 curl -X POST http://localhost:9000/say \
@@ -145,7 +150,7 @@ curl http://localhost:9000/history
 | `reachy_speak_llm.py` | Ask Ollama a question, speak the reply with Piper TTS | No |
 | `reachy_speak_animated.py` | LLM speech + animated head/antenna movements | No |
 | `reachy_greet.py` | Watches camera for motion, greets visitors with LLM speech | No |
-| `reachy_dashboard.py` | Webhook server — any agent can POST to make robot announce | No |
+| `reachy_dashboard.py` | Local-only webhook server for announcements, status, history, and camera | No |
 | `karlctl.py` / `karlctl` | Unified command-line control for status, motion, speech, eyes, camera, and demos | No |
 | `fix_camera.py` | Fix dark camera image on macOS (UVC power-line-frequency) | No |
 | `reachy_leds.py` | Function-based LED eye control (auto-detects the ESP32 port) | No |
@@ -223,6 +228,10 @@ speaking script.
 
 Override defaults with environment variables, e.g.
 `OLLAMA_MODEL=qwen3:30b ./start_karl.sh`.
+
+Shared script configuration lives in `karl_config.py`. It resolves voice-model
+paths relative to the repository, restricts SDK connections to the local
+daemon, and provides Karl's calibrated `[0.15, -0.25]` antenna rest position.
 
 ### Interactive experiences
 

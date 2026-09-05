@@ -12,6 +12,7 @@ import datetime
 import json
 import random
 import signal
+import serial
 import subprocess
 import threading
 import time
@@ -20,11 +21,11 @@ import urllib.request
 from pathlib import Path
 
 import reachy_leds
+from karl_config import ANTENNA_REST
 
 
 DAEMON_URL = "http://127.0.0.1:8000"
 KARLCTL = Path(__file__).with_name("karlctl")
-ANTENNA_REST = [0.15, -0.25]
 EYE_COLOR = (40, 35, 30)
 POLL_INTERVAL = 1.0
 FACE_CONFIRMATIONS = 2
@@ -48,20 +49,34 @@ class EyeBlinker:
         self.thread: threading.Thread | None = None
 
     def start(self) -> None:
-        if self.thread is not None:
+        if self.thread is not None and self.thread.is_alive():
             return
+        self.thread = None
+        self.stop_event = None
         if self.serial is None:
             self.serial = reachy_leds.connect()
         if self.serial is None:
             return
         self.stop_event = threading.Event()
         self.thread = threading.Thread(
-            target=reachy_leds.idle_blink,
+            target=self._blink,
             args=(self.serial, self.stop_event),
-            kwargs={"color": EYE_COLOR},
             daemon=True,
         )
         self.thread.start()
+
+    def _blink(self, connection, stop_event) -> None:
+        try:
+            reachy_leds.idle_blink(
+                connection,
+                stop_event,
+                color=EYE_COLOR,
+            )
+        except (OSError, serial.SerialException) as error:
+            print(f"GPP eye connection failed: {error}", flush=True)
+            connection.close()
+            if self.serial is connection:
+                self.serial = None
 
     def stop(self) -> None:
         if self.stop_event is not None:
@@ -71,13 +86,15 @@ class EyeBlinker:
         self.stop_event = None
         self.thread = None
         if self.serial is not None:
-            reachy_leds.off(self.serial)
+            try:
+                reachy_leds.off(self.serial)
+            except (OSError, serial.SerialException):
+                pass
+            self.serial.close()
+            self.serial = None
 
     def close(self) -> None:
         self.stop()
-        if self.serial is not None:
-            self.serial.close()
-            self.serial = None
 
 
 def daemon_request(path: str, body: dict | None = None) -> dict:
@@ -218,7 +235,6 @@ def main() -> None:
     eyes = EyeBlinker()
     overnight = is_overnight()
     awake = not overnight
-    face_confirmations = 0
     last_seen = time.monotonic()
     person_present_since: float | None = None
     last_comment = time.monotonic() - COMMENT_COOLDOWN_SECONDS
@@ -286,8 +302,6 @@ def main() -> None:
             except (OSError, urllib.error.URLError, json.JSONDecodeError) as error:
                 print(f"GPP face check failed: {error}", flush=True)
                 continue
-
-            face_confirmations = face_confirmations + 1 if seen else 0
 
             if seen:
                 last_seen = now

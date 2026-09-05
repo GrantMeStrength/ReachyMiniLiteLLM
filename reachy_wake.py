@@ -30,16 +30,15 @@ from piper import PiperVoice
 from scipy.signal import resample
 import ollama
 import reachy_leds
+from karl_config import ANTENNA_REST, LOCAL_CONNECTION_MODE, OLLAMA_MODEL, PIPER_MODEL
 
 from robot_karl_prompt import ROBOT_KARL_PROMPT as ROBOT_KARL_SYSTEM_PROMPT
 
 # ── Config ──────────────────────────────────────────────────────────────
 WHISPER_MODEL = "base.en"
-OLLAMA_MODEL = "llama3.2"
-VOICE_MODEL = "piper_models/en_GB-northern_english_male-medium.onnx"
+VOICE_MODEL = PIPER_MODEL
 PITCH_SHIFT = 0.95
 ROBOT_SAMPLE_RATE = 16000
-ANTENNA_NEUTRAL = [0.15, -0.25]  # verified outside Karl's backlash zone
 
 # Wake word detection
 WAKE_PHRASES = ["hey karl", "hey carl", "hey carol", "a]karl", "ok karl", "okay karl"]
@@ -85,28 +84,32 @@ def animate_loop(mini, keyframes, stop_event):
                          duration=dur, method="minjerk")
         idx += 1
     # Return to neutral
-    mini.goto_target(head=create_head_pose(), body_yaw=0, antennas=ANTENNA_NEUTRAL,
+    mini.goto_target(head=create_head_pose(), body_yaw=0, antennas=ANTENNA_REST,
                      duration=0.5, method="minjerk")
 
 
 def record_chunk(mini, duration):
     """Record a short chunk, return (mono_audio, doa_yaw or None)."""
     mini.media.start_recording()
-    time.sleep(0.05)
     chunks = []
     doa_samples = []
-    start = time.time()
-    while time.time() - start < duration:
-        try:
-            chunk = mini.media.get_audio_sample()
-            if hasattr(chunk, 'ndim') and chunk.ndim == 2:
-                chunks.append(chunk)
-            angle, active = mini.media.get_DoA()
-            if active:
-                doa_samples.append(-math.degrees(angle - math.pi / 2))
-        except Exception:
-            time.sleep(0.005)
-    mini.media.stop_recording()
+    try:
+        time.sleep(0.05)
+        start = time.monotonic()
+        while time.monotonic() - start < duration:
+            try:
+                chunk = mini.media.get_audio_sample()
+                if hasattr(chunk, "ndim") and chunk.ndim == 2:
+                    chunks.append(chunk)
+                doa = mini.media.get_DoA()
+                if doa is not None:
+                    angle, active = doa
+                    if active:
+                        doa_samples.append(-math.degrees(angle - math.pi / 2))
+            except Exception:
+                time.sleep(0.005)
+    finally:
+        mini.media.stop_recording()
     if not chunks:
         return np.zeros(int(ROBOT_SAMPLE_RATE * duration), dtype=np.float32), None
     audio = np.concatenate(chunks, axis=0)
@@ -118,33 +121,37 @@ def record_chunk(mini, duration):
 def record_until_silence(mini, max_duration, silence_threshold, silence_duration, min_duration):
     """Record until silence is detected or max_duration reached."""
     mini.media.start_recording()
-    time.sleep(0.05)
     chunks = []
     doa_samples = []
-    start = time.time()
-    last_speech_time = start
+    try:
+        time.sleep(0.05)
+        start = time.monotonic()
+        last_speech_time = start
 
-    while time.time() - start < max_duration:
-        try:
-            chunk = mini.media.get_audio_sample()
-            if hasattr(chunk, 'ndim') and chunk.ndim == 2:
-                chunks.append(chunk)
-                # Check if this chunk has speech
-                rms = np.sqrt(np.mean(chunk ** 2))
-                if rms > silence_threshold:
-                    last_speech_time = time.time()
-            angle, active = mini.media.get_DoA()
-            if active:
-                doa_samples.append(-math.degrees(angle - math.pi / 2))
-        except Exception:
-            time.sleep(0.005)
+        while time.monotonic() - start < max_duration:
+            try:
+                chunk = mini.media.get_audio_sample()
+                if hasattr(chunk, "ndim") and chunk.ndim == 2:
+                    chunks.append(chunk)
+                    rms = np.sqrt(np.mean(chunk ** 2))
+                    if rms > silence_threshold:
+                        last_speech_time = time.monotonic()
+                doa = mini.media.get_DoA()
+                if doa is not None:
+                    angle, active = doa
+                    if active:
+                        doa_samples.append(-math.degrees(angle - math.pi / 2))
+            except Exception:
+                time.sleep(0.005)
 
-        # Check for silence (only after min recording time)
-        elapsed = time.time() - start
-        if elapsed > min_duration and (time.time() - last_speech_time) > silence_duration:
-            break
-
-    mini.media.stop_recording()
+            elapsed = time.monotonic() - start
+            if (
+                elapsed > min_duration
+                and time.monotonic() - last_speech_time > silence_duration
+            ):
+                break
+    finally:
+        mini.media.stop_recording()
     if not chunks:
         return np.zeros(int(ROBOT_SAMPLE_RATE * 0.5), dtype=np.float32), None
     audio = np.concatenate(chunks, axis=0)
@@ -155,12 +162,16 @@ def record_until_silence(mini, max_duration, silence_threshold, silence_duration
 
 def turn_toward_speaker(mini, doa_yaw_deg):
     """Smoothly turn head and body toward the detected speaker direction."""
-    head_yaw = max(-60, min(60, doa_yaw_deg))
-    body_yaw_rad = math.radians(max(-40, min(40, doa_yaw_deg * 0.5)))
+    head_yaw = clamp_speaker_yaw(doa_yaw_deg)
+    body_yaw_rad = math.radians(max(-40, min(40, head_yaw * 0.5)))
     pose = create_head_pose(yaw=head_yaw, degrees=True)
     mini.goto_target(head=pose, body_yaw=body_yaw_rad,
                      duration=0.6, method="minjerk")
     print(f"   🧭 Turned toward speaker ({doa_yaw_deg:+.0f}°)", flush=True)
+
+
+def clamp_speaker_yaw(yaw):
+    return max(-60, min(60, yaw))
 
 
 def speak_animated(mini, voice, text, face_yaw=0, led_ser=None):
@@ -178,10 +189,12 @@ def speak_animated(mini, voice, text, face_yaw=0, led_ser=None):
 
     offset_keyframes = []
     for (y, z, pitch, yaw, body_yaw, ant_l, ant_r, dur) in SPEAKING_KEYFRAMES:
+        head_yaw = max(-60, min(60, yaw + face_yaw * 0.7))
+        body_yaw_degrees = math.degrees(body_yaw) + face_yaw * 0.3
         offset_keyframes.append((
             y, z, pitch,
-            yaw + face_yaw * 0.7,
-            body_yaw + math.radians(face_yaw * 0.3),
+            head_yaw,
+            math.radians(max(-40, min(40, body_yaw_degrees))),
             ant_l, ant_r, dur
         ))
 
@@ -193,15 +206,16 @@ def speak_animated(mini, voice, text, face_yaw=0, led_ser=None):
     led_thread, led_stop = reachy_leds.start_speaking_leds(led_ser) if led_ser else (None, None)
 
     mini.media.start_playing()
-    mini.media.push_audio_sample(resampled.reshape(-1, 1))
-    time.sleep(audio_duration + 0.3)
-    mini.media.stop_playing()
-
-    stop_anim.set()
-    anim_thread.join()
-    if led_stop:
-        led_stop.set()
-        led_thread.join()
+    try:
+        mini.media.push_audio_sample(resampled.reshape(-1, 1))
+        time.sleep(audio_duration + 0.3)
+    finally:
+        mini.media.stop_playing()
+        stop_anim.set()
+        anim_thread.join()
+        if led_stop:
+            led_stop.set()
+            led_thread.join()
 
 
 def contains_wake_word(text):
@@ -243,7 +257,10 @@ def main():
     voice = PiperVoice.load(VOICE_MODEL)
 
     print("Connecting to robot...", flush=True)
-    mini = ReachyMini(media_backend="default")
+    mini = ReachyMini(
+        media_backend="default",
+        connection_mode=LOCAL_CONNECTION_MODE,
+    )
     led_ser = reachy_leds.connect()  # auto-detects eye ESP32; None if absent
     print("Connected! Robot Karl is waiting for 'Hey Karl'...\n", flush=True)
 
@@ -305,7 +322,7 @@ def main():
                 reachy_leds.set_color(led_ser, 255, 150, 0)
 
             if doa_yaw is not None:
-                speaker_yaw = doa_yaw
+                speaker_yaw = clamp_speaker_yaw(doa_yaw)
                 turn_toward_speaker(mini, speaker_yaw)
 
             # Check if they already said something after the wake word
@@ -318,7 +335,7 @@ def main():
             else:
                 # Play acknowledgment sound (quick antenna perk)
                 mini.goto_target(antennas=[0.4, -0.4], duration=0.3, method="minjerk")
-                mini.goto_target(antennas=ANTENNA_NEUTRAL, duration=0.3, method="minjerk")
+                mini.goto_target(antennas=ANTENNA_REST, duration=0.3, method="minjerk")
 
                 # Start alert animation while listening
                 stop_alert = threading.Event()
@@ -337,7 +354,7 @@ def main():
                 alert_thread.join()
 
                 if req_doa is not None:
-                    speaker_yaw = req_doa
+                    speaker_yaw = clamp_speaker_yaw(req_doa)
 
                 # Transcribe
                 req_rms = np.sqrt(np.mean(request_mono ** 2))
@@ -374,12 +391,21 @@ def main():
 
     except KeyboardInterrupt:
         print("\n\nStopping...", flush=True)
+    finally:
         stop_idle()
         if led_ser:
             reachy_leds.off(led_ser)
             led_ser.close()
-        mini.goto_target(head=create_head_pose(), body_yaw=0, antennas=ANTENNA_NEUTRAL,
-                         duration=0.5, method="minjerk")
+        try:
+            mini.goto_target(
+                head=create_head_pose(),
+                body_yaw=0,
+                antennas=ANTENNA_REST,
+                duration=0.5,
+                method="minjerk",
+            )
+        finally:
+            mini.__exit__(None, None, None)
         print("Goodbye!")
 
 

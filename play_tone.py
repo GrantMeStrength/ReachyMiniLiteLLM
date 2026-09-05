@@ -3,6 +3,7 @@
 from reachy_mini import ReachyMini
 import numpy as np
 import time
+from karl_config import LOCAL_CONNECTION_MODE
 
 SAMPLE_RATE = 16000
 
@@ -27,14 +28,21 @@ def make_melody() -> np.ndarray:
         parts.append(gap)
     return np.concatenate(parts)
 
-with ReachyMini(media_backend="default") as mini:
-    print("🔊 Playing melody...")
-    mini.media.start_playing()
+def main():
+    with ReachyMini(
+        media_backend="default",
+        connection_mode=LOCAL_CONNECTION_MODE,
+    ) as mini:
+        print("🔊 Playing melody...")
+        mini.media.start_playing()
 
-    melody = make_melody()
-    # Robot expects (samples, channels) — reshape to mono
-    mini.media.push_audio_sample(melody.reshape(-1, 1))
-    time.sleep(len(melody) / SAMPLE_RATE + 0.5)
+        melody = make_melody()
+        mini.media.push_audio_sample(melody.reshape(-1, 1))
+        time.sleep(len(melody) / SAMPLE_RATE + 0.5)
 
-    mini.media.stop_playing()
-    print("✅ Done!")
+        mini.media.stop_playing()
+        print("✅ Done!")
+
+
+if __name__ == "__main__":
+    main()

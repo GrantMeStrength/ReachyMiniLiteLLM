@@ -17,11 +17,14 @@ import ollama
 from piper import PiperVoice
 from scipy.signal import resample
 from reachy_mini import ReachyMini
+from karl_config import (
+    LOCAL_CONNECTION_MODE,
+    OLLAMA_MODEL,
+    PIPER_CONFIG,
+    PIPER_MODEL,
+)
 
 # --- Config ---
-OLLAMA_MODEL = "llama3.2"
-PIPER_MODEL = "piper_models/en_GB-northern_english_male-medium.onnx"
-PIPER_CONFIG = "piper_models/en_GB-northern_english_male-medium.onnx.json"
 ROBOT_SAMPLE_RATE = 16000
 
 from robot_karl_prompt import ROBOT_KARL_PROMPT as SYSTEM_PROMPT
@@ -77,7 +80,10 @@ def main():
     print(f"💬 Asking LLM ({OLLAMA_MODEL})...")
     reply = llm_generate(prompt)
 
-    with ReachyMini(media_backend="default") as mini:
+    with ReachyMini(
+        media_backend="default",
+        connection_mode=LOCAL_CONNECTION_MODE,
+    ) as mini:
         mini.media.start_playing()
         speak(mini, voice, reply)
         mini.media.stop_playing()

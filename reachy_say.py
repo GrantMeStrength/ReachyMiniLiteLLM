@@ -24,6 +24,7 @@ import wave
 
 import numpy as np
 from reachy_mini import ReachyMini
+from karl_config import LOCAL_CONNECTION_MODE
 
 SAMPLE_RATE = 16000
 DEFAULT_VOICE = "Daniel"  # en_GB male — closest match to Karl's dialect
@@ -65,7 +66,10 @@ def main():
     duration = len(samples) / SAMPLE_RATE
     print(f"   Audio: {duration:.1f}s")
 
-    with ReachyMini(media_backend="default") as mini:
+    with ReachyMini(
+        media_backend="default",
+        connection_mode=LOCAL_CONNECTION_MODE,
+    ) as mini:
         mini.media.start_playing()
         mini.media.push_audio_sample(samples.reshape(-1, 1))
         time.sleep(duration + 0.5)

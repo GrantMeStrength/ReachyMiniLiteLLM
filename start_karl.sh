@@ -19,8 +19,10 @@ cd "$(dirname "$0")"
 # ── Config ───────────────────────────────────────────────────────────────
 OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2}"
 PIPER_MODEL="piper_models/en_GB-northern_english_male-medium.onnx"
+PIPER_CONFIG="$PIPER_MODEL.json"
 PIPER_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/northern_english_male/medium"
 MODE="${1:-wake}"
+export OLLAMA_MODEL
 
 green() { printf '\033[32m✓\033[0m %s\n' "$1"; }
 warn()  { printf '\033[33m!\033[0m %s\n' "$1"; }
@@ -39,11 +41,17 @@ green "Python: $PY"
   || warn "Face tracking fallback not applied (see /tmp/reachy-face-tracking-fix.log)"
 
 # ── 2. Piper voice model (download once if missing) ──────────────────────
-if [ ! -f "$PIPER_MODEL" ]; then
+if [ ! -s "$PIPER_MODEL" ] || [ ! -s "$PIPER_CONFIG" ]; then
   warn "Piper voice model missing — downloading (~60MB)…"
   mkdir -p piper_models
-  curl -fSL "$PIPER_BASE/en_GB-northern_english_male-medium.onnx"      -o "$PIPER_MODEL"      || die "Voice model download failed"
-  curl -fSL "$PIPER_BASE/en_GB-northern_english_male-medium.onnx.json" -o "$PIPER_MODEL.json" || die "Voice config download failed"
+  MODEL_TMP="$PIPER_MODEL.tmp.$$"
+  CONFIG_TMP="$PIPER_CONFIG.tmp.$$"
+  curl -fSL "$PIPER_BASE/en_GB-northern_english_male-medium.onnx" -o "$MODEL_TMP" \
+    || { rm -f "$MODEL_TMP" "$CONFIG_TMP"; die "Voice model download failed"; }
+  curl -fSL "$PIPER_BASE/en_GB-northern_english_male-medium.onnx.json" -o "$CONFIG_TMP" \
+    || { rm -f "$MODEL_TMP" "$CONFIG_TMP"; die "Voice config download failed"; }
+  mv "$MODEL_TMP" "$PIPER_MODEL"
+  mv "$CONFIG_TMP" "$PIPER_CONFIG"
 fi
 green "Voice model: en_GB-northern_english_male"
 
@@ -59,24 +67,38 @@ if ! curl -fs http://localhost:11434/api/version >/dev/null 2>&1; then
   fi
 fi
 curl -fs http://localhost:11434/api/version >/dev/null 2>&1 || die "Ollama is not reachable on :11434"
-if ! ollama list 2>/dev/null | grep -q "^${OLLAMA_MODEL}"; then
+if ! ollama list 2>/dev/null | awk -v model="$OLLAMA_MODEL" '
+  NR > 1 && ($1 == model || (index(model, ":") == 0 && $1 == model ":latest")) {
+    found = 1
+  }
+  END { exit !found }
+'; then
   warn "Model '$OLLAMA_MODEL' not found — pulling…"
   ollama pull "$OLLAMA_MODEL" || die "Could not pull $OLLAMA_MODEL"
 fi
 green "Ollama model: $OLLAMA_MODEL"
 
 # ── 4. Reachy Mini daemon (start if not already running) ─────────────────
-if ! pgrep -f reachy-mini-daemon >/dev/null 2>&1; then
+daemon_ready() {
+  curl -fsS --max-time 2 http://127.0.0.1:8000/api/media/status >/dev/null 2>&1
+}
+
+if ! daemon_ready; then
   DAEMON=""
   for c in "venv/bin/reachy-mini-daemon" "$HOME/venv/bin/reachy-mini-daemon" "$(command -v reachy-mini-daemon 2>/dev/null)"; do
     [ -n "$c" ] && [ -x "$c" ] && DAEMON="$c" && break
   done
   [ -n "$DAEMON" ] || die "reachy-mini-daemon not found"
-  warn "Starting Reachy Mini daemon…"
-  "$DAEMON" >/tmp/reachy-daemon.log 2>&1 &
-  sleep 6
+  if ! pgrep -f reachy-mini-daemon >/dev/null 2>&1; then
+    warn "Starting Reachy Mini daemon…"
+    "$DAEMON" >/tmp/reachy-daemon.log 2>&1 &
+  fi
+  for _ in $(seq 1 20); do
+    daemon_ready && break
+    sleep 1
+  done
 fi
-pgrep -f reachy-mini-daemon >/dev/null 2>&1 || die "Daemon failed to start (see /tmp/reachy-daemon.log)"
+daemon_ready || die "Daemon is not responding (see /tmp/reachy-daemon.log)"
 green "Reachy Mini daemon running"
 
 # ── 5. Camera brightness fix (non-fatal — needs uvc-util) ────────────────
