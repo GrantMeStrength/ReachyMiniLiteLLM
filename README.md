@@ -164,10 +164,38 @@ curl http://localhost:9000/history
 | `reachy_speak_animated.py` | LLM speech + animated head/antenna movements | No |
 | `reachy_greet.py` | Watches camera for motion, greets visitors with LLM speech | No |
 | `reachy_dashboard.py` | Local-only webhook server for announcements, status, history, and camera | No |
+| `karl_github_watcher.py` | Announces new issues and pull requests from selected public MicrosoftDocs repositories | Public GitHub only |
 | `karlctl.py` / `karlctl` | Unified command-line control for status, motion, speech, eyes, camera, and demos | No |
 | `fix_camera.py` | Fix dark camera image on macOS (UVC power-line-frequency) | No |
 | `reachy_leds.py` | Shared LED-eye control with safe ownership, recovery, status heartbeat, and GPP blink requests | No |
 | `reachy_eyes.py` | `RobotEyes` driver class — auto-detects port, state presets, pulse animation | No |
+
+### Public GitHub repository watcher
+
+`karl_github_watcher.py` checks these public repositories every 10 minutes:
+
+- `microsoftdocs/windows-dev-docs`
+- `microsoftdocs/windows-ai-docs`
+- `microsoftdocs/win32`
+- `microsoftdocs/sdk-api`
+
+The first run records a baseline without speaking. Later runs announce newly
+created issues and pull requests through Karl. It uses anonymous, read-only
+GitHub API requests and does not connect to a work computer or use work
+credentials. Runtime state is stored outside the repository at
+`~/.local/state/karl/github-watcher.json`.
+
+On Karl's Mac, the included LaunchAgent runs the watcher at login:
+
+```bash
+cp com.grantmestrength.karl-github-watcher.plist ~/Library/LaunchAgents/
+launchctl bootstrap "gui/$(id -u)" \
+  ~/Library/LaunchAgents/com.grantmestrength.karl-github-watcher.plist
+```
+
+The LaunchAgent uses Karl's current repository and Python paths. Its output is
+written to `/tmp/karl-github-watcher.log`. Run a manual check with
+`python karl_github_watcher.py --once`.
 
 ## Unified `karlctl` CLI
 
